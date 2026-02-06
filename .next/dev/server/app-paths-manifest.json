@@ -1,1 +1,15 @@
-{}
+{
+  "/api/auth/me/route": "app/api/auth/me/route.js",
+  "/api/dashboard/stats/route": "app/api/dashboard/stats/route.js",
+  "/api/messages/route": "app/api/messages/route.js",
+  "/api/profile/route": "app/api/profile/route.js",
+  "/api/requirements/route": "app/api/requirements/route.js",
+  "/api/users/[id]/messages/route": "app/api/users/[id]/messages/route.js",
+  "/api/users/route": "app/api/users/route.js",
+  "/contacts/page": "app/contacts/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/inbox/page": "app/inbox/page.js",
+  "/leads/page": "app/leads/page.js",
+  "/page": "app/page.js",
+  "/settings/page": "app/settings/page.js"
+}
