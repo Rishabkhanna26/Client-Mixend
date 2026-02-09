@@ -57,6 +57,40 @@ const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
 const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const AI_SETTINGS_TTL_MS = Number(process.env.AI_SETTINGS_TTL_MS || 60_000);
 const aiSettingsCache = new Map();
+const DUPLICATE_WINDOW_MS = Number(process.env.WHATSAPP_DUP_WINDOW_MS || 10_000);
+const recentMessageIds = new Map();
+
+const getMessageKey = (message) => {
+  const serialized = message?.id?._serialized || message?.id?.id;
+  if (serialized) return serialized;
+  const from = message?.from || "unknown";
+  const ts = message?.timestamp || Date.now();
+  const body = message?.body ? String(message.body).slice(0, 50) : "";
+  return `${from}:${ts}:${body}`;
+};
+
+const isDuplicateMessage = (message) => {
+  const key = getMessageKey(message);
+  const now = Date.now();
+  const lastSeen = recentMessageIds.get(key);
+  if (lastSeen && now - lastSeen < DUPLICATE_WINDOW_MS) {
+    return true;
+  }
+  recentMessageIds.set(key, now);
+  return false;
+};
+
+const pruneRecentMessages = () => {
+  const now = Date.now();
+  for (const [key, ts] of recentMessageIds.entries()) {
+    if (now - ts > DUPLICATE_WINDOW_MS * 2) {
+      recentMessageIds.delete(key);
+    }
+  }
+};
+
+const recentCleanup = setInterval(pruneRecentMessages, DUPLICATE_WINDOW_MS);
+if (recentCleanup.unref) recentCleanup.unref();
 
 const getAdminAISettings = async (adminId) => {
   if (!Number.isFinite(adminId)) return null;
@@ -840,6 +874,8 @@ const finalizeLead = async ({
 function attachAutomationHandlers(session) {
   const { client } = session;
   const users = session.users;
+  if (session.state?.handlersAttached) return;
+  session.state.handlersAttached = true;
 
   /* ===============================
      🔥 AUTOMATION LOGIC
@@ -848,6 +884,7 @@ function attachAutomationHandlers(session) {
     try {
       if (!session.state.isReady) return;
       if (!message || message.fromMe) return;
+      if (isDuplicateMessage(message)) return;
       touchSession(session);
 
     const from = message.from;
