@@ -18,22 +18,45 @@ import {
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTemplate, setNewTemplate] = useState({ name: '', category: '', content: '', variables: '' });
 
   useEffect(() => {
-    fetchTemplates();
+    fetchTemplates({ reset: true, nextOffset: 0 });
   }, []);
 
-  const fetchTemplates = async () => {
+  const fetchTemplates = async ({ reset = false, nextOffset = 0 } = {}) => {
+    if (!reset) {
+      setLoadingMore(true);
+    }
     try {
-      const response = await fetch('/api/templates', { credentials: 'include' });
+      const params = new URLSearchParams();
+      params.set('limit', '24');
+      params.set('offset', String(nextOffset));
+      const response = await fetch(`/api/templates?${params.toString()}`, { credentials: 'include' });
       const data = await response.json();
-      setTemplates(data.data || []);
+      const list = data.data || [];
+      const meta = data.meta || {};
+      setHasMore(Boolean(meta.hasMore));
+      setOffset(meta.nextOffset ?? nextOffset + list.length);
+      if (reset) {
+        setTemplates(list);
+      } else {
+        setTemplates((prev) => [...prev, ...list]);
+      }
     } catch (error) {
       console.error('Error fetching templates:', error);
+      if (reset) {
+        setTemplates([]);
+        setHasMore(false);
+        setOffset(0);
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -141,6 +164,18 @@ export default function TemplatesPage() {
           </Card>
         ))}
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center">
+          <button
+            onClick={() => fetchTemplates({ reset: false, nextOffset: offset })}
+            disabled={loadingMore}
+            className="px-5 py-2 rounded-full border border-aa-orange text-aa-orange font-semibold hover:bg-aa-orange hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loadingMore ? 'Loading...' : 'Load more'}
+          </button>
+        </div>
+      )}
 
       {/* Create Template Modal */}
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Message Template">

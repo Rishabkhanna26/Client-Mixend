@@ -8,31 +8,71 @@ import Modal from '../components/common/Modal.jsx';
 export default function ContactsPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [modalLoading, setModalLoading] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatUser, setChatUser] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatLoadingMore, setChatLoadingMore] = useState(false);
+  const [chatHasMore, setChatHasMore] = useState(false);
+  const [chatError, setChatError] = useState('');
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const [chatSendError, setChatSendError] = useState('');
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    const handle = setTimeout(() => {
+      fetchUsers({ reset: true, nextOffset: 0, searchTerm: search });
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [search]);
 
-  async function fetchUsers() {
+  async function fetchUsers({ reset = false, nextOffset = 0, searchTerm = '' } = {}) {
+    if (reset) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     try {
-      const response = await fetch('/api/users');
+      const params = new URLSearchParams();
+      params.set('limit', '48');
+      params.set('offset', String(nextOffset));
+      if (searchTerm) params.set('q', searchTerm);
+      const response = await fetch(`/api/users?${params.toString()}`);
       const data = await response.json();
-      setUsers(data.data || []);
+      const list = data.data || [];
+      const meta = data.meta || {};
+      setHasMore(Boolean(meta.hasMore));
+      setOffset(meta.nextOffset ?? nextOffset + list.length);
+      if (reset) {
+        setUsers(list);
+      } else {
+        setUsers((prev) => [...prev, ...list]);
+      }
     } catch (error) {
       console.error('Failed to fetch users:', error);
+      if (reset) {
+        setUsers([]);
+        setHasMore(false);
+        setOffset(0);
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }
 
   const openDetails = async (user) => {
     setSelectedUser(user);
     setModalOpen(true);
+    setChatOpen(false);
     setMessages([]);
     setModalLoading(true);
     try {
@@ -46,11 +86,115 @@ export default function ContactsPage() {
     }
   };
 
-  const filteredUsers = users.filter(user =>
-    user.name?.toLowerCase().includes(search.toLowerCase()) ||
-    user.phone?.includes(search) ||
-    user.email?.toLowerCase().includes(search.toLowerCase())
-  );
+  const openChat = async (user) => {
+    setChatUser(user);
+    setChatOpen(true);
+    setModalOpen(false);
+    setChatMessages([]);
+    setChatLoading(true);
+    setChatHasMore(false);
+    setChatError('');
+    setChatDraft('');
+    setChatSendError('');
+    try {
+      const params = new URLSearchParams();
+      params.set('limit', '50');
+      const response = await fetch(`/api/users/${user.id}/messages?${params.toString()}`);
+      const data = await response.json();
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Failed to load messages');
+      }
+      const list = Array.isArray(data?.data) ? data.data : [];
+      setChatHasMore(Boolean(data?.meta?.hasMore));
+      if (!Array.isArray(data?.data)) {
+        setChatError('Unexpected response format for messages.');
+      }
+      setChatMessages(list);
+    } catch (error) {
+      console.error('Failed to fetch chat messages:', error);
+      setChatError(error.message || 'Failed to fetch chat messages.');
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const sendChatMessage = async () => {
+    if (!chatUser || chatSending) return;
+    const messageText = chatDraft.trim();
+    if (!messageText) return;
+
+    const tempId = `temp-${Date.now()}`;
+    const optimistic = {
+      id: tempId,
+      user_id: chatUser.id,
+      admin_id: null,
+      message_text: messageText,
+      message_type: 'outgoing',
+      status: 'sent',
+      created_at: new Date().toISOString(),
+    };
+
+    setChatSending(true);
+    setChatSendError('');
+    setChatDraft('');
+    setChatMessages((prev) => [...prev, optimistic]);
+
+    try {
+      const response = await fetch(`/api/users/${chatUser.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: messageText }),
+      });
+      const data = await response.json();
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Failed to send message');
+      }
+      if (data?.data?.id) {
+        setChatMessages((prev) =>
+          prev.map((msg) => (msg.id === tempId ? data.data : msg))
+        );
+      }
+    } catch (error) {
+      console.error('Failed to send chat message:', error);
+      setChatSendError(error.message || 'Failed to send message.');
+      setChatMessages((prev) => prev.filter((msg) => msg.id !== tempId));
+      setChatDraft(messageText);
+    } finally {
+      setChatSending(false);
+    }
+  };
+
+  const loadOlderMessages = async () => {
+    if (!chatUser || chatLoadingMore || !chatHasMore) return;
+    const oldest = [...chatMessages]
+      .filter((msg) => msg?.created_at)
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
+    if (!oldest?.created_at) return;
+
+    setChatLoadingMore(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('limit', '50');
+      params.set('before', oldest.created_at);
+      const response = await fetch(`/api/users/${chatUser.id}/messages?${params.toString()}`);
+      const data = await response.json();
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Failed to load older messages');
+      }
+      const list = Array.isArray(data?.data) ? data.data : [];
+      setChatHasMore(Boolean(data?.meta?.hasMore));
+      if (list.length > 0) {
+        setChatMessages((prev) => [...prev, ...list]);
+      }
+    } catch (error) {
+      console.error('Failed to load older messages:', error);
+      setChatError(error.message || 'Failed to load older messages.');
+    } finally {
+      setChatLoadingMore(false);
+    }
+  };
+
+  const filteredUsers = users;
 
   if (loading) {
     return (
@@ -116,7 +260,10 @@ export default function ContactsPage() {
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t flex gap-2">
-                <button className="flex-1 px-3 py-1 bg-aa-orange text-white rounded text-sm font-semibold hover:bg-opacity-90 transition">
+                <button
+                  className="flex-1 px-3 py-1 bg-aa-orange text-white rounded text-sm font-semibold hover:bg-opacity-90 transition"
+                  onClick={() => openChat(user)}
+                >
                   Message
                 </button>
                 <button
@@ -130,6 +277,18 @@ export default function ContactsPage() {
           ))
         )}
       </div>
+
+      {hasMore && (
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={() => fetchUsers({ reset: false, nextOffset: offset, searchTerm: search })}
+            disabled={loadingMore}
+            className="px-5 py-2 rounded-full border border-aa-orange text-aa-orange font-semibold hover:bg-aa-orange hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loadingMore ? 'Loading...' : 'Load more'}
+          </button>
+        </div>
+      )}
 
       <Modal
         isOpen={modalOpen}
@@ -206,6 +365,116 @@ export default function ContactsPage() {
                   })()}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+        title={chatUser ? `Chat with ${chatUser.name || 'Contact'}` : 'Chat'}
+        size="lg"
+      >
+        {!chatUser ? (
+          <p className="text-aa-gray">No contact selected.</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-aa-orange/10 flex items-center justify-center">
+                  <span className="text-lg font-semibold text-aa-orange">
+                    {chatUser.name?.charAt(0) || 'U'}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-aa-dark-blue">{chatUser.name || 'Unknown'}</p>
+                  <p className="text-sm text-aa-gray">{chatUser.phone || '—'}</p>
+                </div>
+              </div>
+              <div className="text-xs text-aa-gray">
+                {chatUser.admin_name ? `Assigned to ${chatUser.admin_name}` : 'Unassigned'}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-gradient-to-b from-gray-50 via-white to-gray-50 p-4">
+              <div className="h-[55vh] overflow-y-auto pr-2">
+                {chatLoading ? (
+                  <p className="text-aa-gray">Loading conversation...</p>
+                ) : chatError ? (
+                  <p className="text-red-600">{chatError}</p>
+                ) : chatMessages.length === 0 ? (
+                  <p className="text-aa-gray">No messages found for this contact.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {chatHasMore && (
+                      <div className="flex justify-center">
+                        <button
+                          onClick={loadOlderMessages}
+                          disabled={chatLoadingMore}
+                          className="px-4 py-1.5 rounded-full border border-gray-300 text-xs text-aa-gray hover:border-aa-orange hover:text-aa-orange transition disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {chatLoadingMore ? 'Loading...' : 'Load older messages'}
+                        </button>
+                      </div>
+                    )}
+                    {Array.isArray(chatMessages) ? [...chatMessages]
+                      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+                      .map((msg) => {
+                        const isOutgoing = msg.message_type === 'outgoing';
+                        return (
+                          <div
+                            key={msg.id}
+                            className={`flex ${isOutgoing ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`max-w-[75%] rounded-2xl px-4 py-2 shadow-sm ${
+                                isOutgoing
+                                  ? 'bg-green-100 text-aa-text-dark rounded-br-md'
+                                  : 'bg-white text-aa-text-dark border border-gray-200 rounded-bl-md'
+                              }`}
+                            >
+                              <p className="text-sm leading-relaxed">{msg.message_text || msg.message || '—'}</p>
+                              <div className={`mt-2 text-[11px] ${isOutgoing ? 'text-green-700' : 'text-gray-500'}`}>
+                                {msg.created_at ? new Date(msg.created_at).toLocaleString() : '—'}
+                                {msg.status ? ` • ${msg.status}` : ''}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }) : null}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-2xl p-3 bg-white shadow-sm">
+              {chatSendError && (
+                <p className="text-xs text-red-600 mb-2">{chatSendError}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={chatDraft}
+                  onChange={(e) => setChatDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      sendChatMessage();
+                    }
+                  }}
+                  placeholder="Type a message..."
+                  className="flex-1 px-4 py-2 rounded-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-aa-orange"
+                  disabled={chatSending}
+                />
+                <button
+                  onClick={sendChatMessage}
+                  disabled={chatSending || !chatDraft.trim()}
+                  className="px-4 py-2 rounded-full bg-aa-orange text-white font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {chatSending ? 'Sending...' : 'Send'}
+                </button>
+              </div>
             </div>
           </div>
         )}

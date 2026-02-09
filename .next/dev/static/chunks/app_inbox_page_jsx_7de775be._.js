@@ -20,24 +20,66 @@ function InboxPage() {
     _s();
     const [messages, setMessages] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])([]);
     const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(true);
+    const [loadingMore, setLoadingMore] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [hasMore, setHasMore] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [offset, setOffset] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(0);
     const [search, setSearch] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('');
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "InboxPage.useEffect": ()=>{
-            fetchMessages();
+            const handle = setTimeout({
+                "InboxPage.useEffect.handle": ()=>{
+                    fetchMessages({
+                        reset: true,
+                        nextOffset: 0,
+                        searchTerm: search
+                    });
+                }
+            }["InboxPage.useEffect.handle"], 300);
+            return ({
+                "InboxPage.useEffect": ()=>clearTimeout(handle)
+            })["InboxPage.useEffect"];
         }
-    }["InboxPage.useEffect"], []);
-    async function fetchMessages() {
+    }["InboxPage.useEffect"], [
+        search
+    ]);
+    async function fetchMessages({ reset = false, nextOffset = 0, searchTerm = '' } = {}) {
+        if (reset) {
+            setLoading(true);
+        } else {
+            setLoadingMore(true);
+        }
         try {
-            const response = await fetch('/api/messages');
+            const params = new URLSearchParams();
+            params.set('limit', '50');
+            params.set('offset', String(nextOffset));
+            if (searchTerm) params.set('q', searchTerm);
+            const response = await fetch(`/api/messages?${params.toString()}`);
             const data = await response.json();
-            setMessages(data.data || []);
+            const list = data.data || [];
+            const meta = data.meta || {};
+            setHasMore(Boolean(meta.hasMore));
+            setOffset(meta.nextOffset ?? nextOffset + list.length);
+            if (reset) {
+                setMessages(list);
+            } else {
+                setMessages((prev)=>[
+                        ...prev,
+                        ...list
+                    ]);
+            }
         } catch (error) {
             console.error('Failed to fetch messages:', error);
+            if (reset) {
+                setMessages([]);
+                setHasMore(false);
+                setOffset(0);
+            }
         } finally{
             setLoading(false);
+            setLoadingMore(false);
         }
     }
-    const filteredMessages = messages.filter((msg)=>msg.user_name?.toLowerCase().includes(search.toLowerCase()) || msg.phone?.includes(search) || msg.message_text?.toLowerCase().includes(search.toLowerCase()));
+    const filteredMessages = messages;
     if (loading) {
         return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
             className: "flex items-center justify-center h-screen",
@@ -48,7 +90,7 @@ function InboxPage() {
                         className: "animate-spin rounded-full h-12 w-12 border-b-2 border-aa-orange mx-auto mb-4"
                     }, void 0, false, {
                         fileName: "[project]/app/inbox/page.jsx",
-                        lineNumber: 38,
+                        lineNumber: 63,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -56,18 +98,18 @@ function InboxPage() {
                         children: "Loading messages..."
                     }, void 0, false, {
                         fileName: "[project]/app/inbox/page.jsx",
-                        lineNumber: 39,
+                        lineNumber: 64,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/inbox/page.jsx",
-                lineNumber: 37,
+                lineNumber: 62,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/app/inbox/page.jsx",
-            lineNumber: 36,
+            lineNumber: 61,
             columnNumber: 7
         }, this);
     }
@@ -88,14 +130,14 @@ function InboxPage() {
                                 }
                             }, void 0, false, {
                                 fileName: "[project]/app/inbox/page.jsx",
-                                lineNumber: 49,
+                                lineNumber: 74,
                                 columnNumber: 11
                             }, this),
                             "Inbox"
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/inbox/page.jsx",
-                        lineNumber: 48,
+                        lineNumber: 73,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -109,7 +151,7 @@ function InboxPage() {
                                 }
                             }, void 0, false, {
                                 fileName: "[project]/app/inbox/page.jsx",
-                                lineNumber: 54,
+                                lineNumber: 79,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -120,19 +162,19 @@ function InboxPage() {
                                 className: "w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
                             }, void 0, false, {
                                 fileName: "[project]/app/inbox/page.jsx",
-                                lineNumber: 59,
+                                lineNumber: 84,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/inbox/page.jsx",
-                        lineNumber: 53,
+                        lineNumber: 78,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/inbox/page.jsx",
-                lineNumber: 47,
+                lineNumber: 72,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -148,7 +190,7 @@ function InboxPage() {
                             }
                         }, void 0, false, {
                             fileName: "[project]/app/inbox/page.jsx",
-                            lineNumber: 72,
+                            lineNumber: 97,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -156,13 +198,13 @@ function InboxPage() {
                             children: "No messages found"
                         }, void 0, false, {
                             fileName: "[project]/app/inbox/page.jsx",
-                            lineNumber: 73,
+                            lineNumber: 98,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/app/inbox/page.jsx",
-                    lineNumber: 71,
+                    lineNumber: 96,
                     columnNumber: 11
                 }, this) : filteredMessages.map((msg)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "bg-white p-4 rounded-lg border border-gray-200 hover:shadow-md transition cursor-pointer",
@@ -183,7 +225,7 @@ function InboxPage() {
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/inbox/page.jsx",
-                                                lineNumber: 83,
+                                                lineNumber: 108,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -191,13 +233,13 @@ function InboxPage() {
                                                 children: msg.message_text
                                             }, void 0, false, {
                                                 fileName: "[project]/app/inbox/page.jsx",
-                                                lineNumber: 84,
+                                                lineNumber: 109,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/inbox/page.jsx",
-                                        lineNumber: 82,
+                                        lineNumber: 107,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -205,13 +247,13 @@ function InboxPage() {
                                         children: msg.message_type
                                     }, void 0, false, {
                                         fileName: "[project]/app/inbox/page.jsx",
-                                        lineNumber: 86,
+                                        lineNumber: 111,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/inbox/page.jsx",
-                                lineNumber: 81,
+                                lineNumber: 106,
                                 columnNumber: 15
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -226,7 +268,7 @@ function InboxPage() {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/inbox/page.jsx",
-                                        lineNumber: 97,
+                                        lineNumber: 122,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -234,34 +276,55 @@ function InboxPage() {
                                         children: msg.status
                                     }, void 0, false, {
                                         fileName: "[project]/app/inbox/page.jsx",
-                                        lineNumber: 100,
+                                        lineNumber: 125,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/inbox/page.jsx",
-                                lineNumber: 96,
+                                lineNumber: 121,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, msg.id, true, {
                         fileName: "[project]/app/inbox/page.jsx",
-                        lineNumber: 77,
+                        lineNumber: 102,
                         columnNumber: 13
                     }, this))
             }, void 0, false, {
                 fileName: "[project]/app/inbox/page.jsx",
-                lineNumber: 69,
+                lineNumber: 94,
                 columnNumber: 7
+            }, this),
+            hasMore && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "mt-6 flex justify-center",
+                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                    onClick: ()=>fetchMessages({
+                            reset: false,
+                            nextOffset: offset,
+                            searchTerm: search
+                        }),
+                    disabled: loadingMore,
+                    className: "px-5 py-2 rounded-full border border-aa-orange text-aa-orange font-semibold hover:bg-aa-orange hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed",
+                    children: loadingMore ? 'Loading...' : 'Load more'
+                }, void 0, false, {
+                    fileName: "[project]/app/inbox/page.jsx",
+                    lineNumber: 138,
+                    columnNumber: 11
+                }, this)
+            }, void 0, false, {
+                fileName: "[project]/app/inbox/page.jsx",
+                lineNumber: 137,
+                columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/inbox/page.jsx",
-        lineNumber: 46,
+        lineNumber: 71,
         columnNumber: 5
     }, this);
 }
-_s(InboxPage, "YHvPCZ5JVpj27n2Q1MVdrKxFrp0=");
+_s(InboxPage, "tD1vwa1wcu4WnLJt2HLyW+Itup8=");
 _c = InboxPage;
 var _c;
 __turbopack_context__.k.register(_c, "InboxPage");

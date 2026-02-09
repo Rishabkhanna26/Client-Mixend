@@ -18,23 +18,64 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$fortawesom
 function LeadsPage() {
     const [requirements, setRequirements] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])([]);
     const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(true);
+    const [loadingMore, setLoadingMore] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [hasMore, setHasMore] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [offset, setOffset] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(0);
     const [search, setSearch] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])('');
     const [filterStatus, setFilterStatus] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])('all');
     const [updatingId, setUpdatingId] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(null);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useEffect"])(()=>{
-        fetchRequirements();
-    }, []);
-    async function fetchRequirements() {
+        const handle = setTimeout(()=>{
+            fetchRequirements({
+                reset: true,
+                nextOffset: 0,
+                searchTerm: search,
+                status: filterStatus
+            });
+        }, 300);
+        return ()=>clearTimeout(handle);
+    }, [
+        search,
+        filterStatus
+    ]);
+    async function fetchRequirements({ reset = false, nextOffset = 0, searchTerm = '', status = 'all' } = {}) {
+        if (reset) {
+            setLoading(true);
+        } else {
+            setLoadingMore(true);
+        }
         try {
-            const response = await fetch('/api/requirements', {
+            const params = new URLSearchParams();
+            params.set('limit', '50');
+            params.set('offset', String(nextOffset));
+            if (searchTerm) params.set('q', searchTerm);
+            if (status && status !== 'all') params.set('status', status);
+            const response = await fetch(`/api/requirements?${params.toString()}`, {
                 credentials: 'include'
             });
             const data = await response.json();
-            setRequirements(data.data || []);
+            const list = data.data || [];
+            const meta = data.meta || {};
+            setHasMore(Boolean(meta.hasMore));
+            setOffset(meta.nextOffset ?? nextOffset + list.length);
+            if (reset) {
+                setRequirements(list);
+            } else {
+                setRequirements((prev)=>[
+                        ...prev,
+                        ...list
+                    ]);
+            }
         } catch (error) {
             console.error('Failed to fetch requirements:', error);
+            if (reset) {
+                setRequirements([]);
+                setHasMore(false);
+                setOffset(0);
+            }
         } finally{
             setLoading(false);
+            setLoadingMore(false);
         }
     }
     async function updateStatus(requirementId, status) {
@@ -67,11 +108,7 @@ function LeadsPage() {
             setUpdatingId(null);
         }
     }
-    const filteredRequirements = requirements.filter((req)=>{
-        const matchesSearch = req.name?.toLowerCase().includes(search.toLowerCase()) || req.requirement_text?.toLowerCase().includes(search.toLowerCase());
-        const matchesStatus = filterStatus === 'all' || req.status === filterStatus;
-        return matchesSearch && matchesStatus;
-    });
+    const filteredRequirements = requirements;
     const getStatusColor = (status)=>{
         switch(status){
             case 'pending':
@@ -94,7 +131,7 @@ function LeadsPage() {
                         className: "animate-spin rounded-full h-12 w-12 border-b-2 border-aa-orange mx-auto mb-4"
                     }, void 0, false, {
                         fileName: "[project]/app/leads/page.jsx",
-                        lineNumber: 79,
+                        lineNumber: 104,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -102,18 +139,18 @@ function LeadsPage() {
                         children: "Loading leads..."
                     }, void 0, false, {
                         fileName: "[project]/app/leads/page.jsx",
-                        lineNumber: 80,
+                        lineNumber: 105,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/leads/page.jsx",
-                lineNumber: 78,
+                lineNumber: 103,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/app/leads/page.jsx",
-            lineNumber: 77,
+            lineNumber: 102,
             columnNumber: 7
         }, this);
     }
@@ -134,14 +171,14 @@ function LeadsPage() {
                                 }
                             }, void 0, false, {
                                 fileName: "[project]/app/leads/page.jsx",
-                                lineNumber: 90,
+                                lineNumber: 115,
                                 columnNumber: 11
                             }, this),
                             "Leads"
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/leads/page.jsx",
-                        lineNumber: 89,
+                        lineNumber: 114,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -158,7 +195,7 @@ function LeadsPage() {
                                         }
                                     }, void 0, false, {
                                         fileName: "[project]/app/leads/page.jsx",
-                                        lineNumber: 96,
+                                        lineNumber: 121,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -169,13 +206,13 @@ function LeadsPage() {
                                         className: "w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
                                     }, void 0, false, {
                                         fileName: "[project]/app/leads/page.jsx",
-                                        lineNumber: 101,
+                                        lineNumber: 126,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/leads/page.jsx",
-                                lineNumber: 95,
+                                lineNumber: 120,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("select", {
@@ -188,7 +225,7 @@ function LeadsPage() {
                                         children: "All Status"
                                     }, void 0, false, {
                                         fileName: "[project]/app/leads/page.jsx",
-                                        lineNumber: 114,
+                                        lineNumber: 139,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -196,7 +233,7 @@ function LeadsPage() {
                                         children: "Pending"
                                     }, void 0, false, {
                                         fileName: "[project]/app/leads/page.jsx",
-                                        lineNumber: 115,
+                                        lineNumber: 140,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -204,7 +241,7 @@ function LeadsPage() {
                                         children: "In Progress"
                                     }, void 0, false, {
                                         fileName: "[project]/app/leads/page.jsx",
-                                        lineNumber: 116,
+                                        lineNumber: 141,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -212,25 +249,25 @@ function LeadsPage() {
                                         children: "Completed"
                                     }, void 0, false, {
                                         fileName: "[project]/app/leads/page.jsx",
-                                        lineNumber: 117,
+                                        lineNumber: 142,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/leads/page.jsx",
-                                lineNumber: 109,
+                                lineNumber: 134,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/leads/page.jsx",
-                        lineNumber: 94,
+                        lineNumber: 119,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/leads/page.jsx",
-                lineNumber: 88,
+                lineNumber: 113,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -246,7 +283,7 @@ function LeadsPage() {
                             }
                         }, void 0, false, {
                             fileName: "[project]/app/leads/page.jsx",
-                            lineNumber: 125,
+                            lineNumber: 150,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -254,13 +291,13 @@ function LeadsPage() {
                             children: "No leads found"
                         }, void 0, false, {
                             fileName: "[project]/app/leads/page.jsx",
-                            lineNumber: 126,
+                            lineNumber: 151,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/app/leads/page.jsx",
-                    lineNumber: 124,
+                    lineNumber: 149,
                     columnNumber: 11
                 }, this) : filteredRequirements.map((req)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "bg-white p-4 rounded-lg border border-gray-200 hover:shadow-md transition",
@@ -273,7 +310,7 @@ function LeadsPage() {
                                         children: req.name
                                     }, void 0, false, {
                                         fileName: "[project]/app/leads/page.jsx",
-                                        lineNumber: 135,
+                                        lineNumber: 160,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -284,7 +321,7 @@ function LeadsPage() {
                                                 children: req.status.replace('_', ' ').toUpperCase()
                                             }, void 0, false, {
                                                 fileName: "[project]/app/leads/page.jsx",
-                                                lineNumber: 137,
+                                                lineNumber: 162,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("select", {
@@ -299,7 +336,7 @@ function LeadsPage() {
                                                         children: "Pending"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/leads/page.jsx",
-                                                        lineNumber: 147,
+                                                        lineNumber: 172,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -307,7 +344,7 @@ function LeadsPage() {
                                                         children: "In Progress"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/leads/page.jsx",
-                                                        lineNumber: 148,
+                                                        lineNumber: 173,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -315,25 +352,25 @@ function LeadsPage() {
                                                         children: "Completed"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/leads/page.jsx",
-                                                        lineNumber: 149,
+                                                        lineNumber: 174,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/leads/page.jsx",
-                                                lineNumber: 140,
+                                                lineNumber: 165,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/leads/page.jsx",
-                                        lineNumber: 136,
+                                        lineNumber: 161,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/leads/page.jsx",
-                                lineNumber: 134,
+                                lineNumber: 159,
                                 columnNumber: 15
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -341,7 +378,7 @@ function LeadsPage() {
                                 children: req.requirement_text
                             }, void 0, false, {
                                 fileName: "[project]/app/leads/page.jsx",
-                                lineNumber: 153,
+                                lineNumber: 178,
                                 columnNumber: 15
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -354,7 +391,7 @@ function LeadsPage() {
                                                 children: "Category: "
                                             }, void 0, false, {
                                                 fileName: "[project]/app/leads/page.jsx",
-                                                lineNumber: 156,
+                                                lineNumber: 181,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -362,13 +399,13 @@ function LeadsPage() {
                                                 children: req.category
                                             }, void 0, false, {
                                                 fileName: "[project]/app/leads/page.jsx",
-                                                lineNumber: 157,
+                                                lineNumber: 182,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/leads/page.jsx",
-                                        lineNumber: 155,
+                                        lineNumber: 180,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -376,30 +413,52 @@ function LeadsPage() {
                                         children: new Date(req.created_at).toLocaleDateString()
                                     }, void 0, false, {
                                         fileName: "[project]/app/leads/page.jsx",
-                                        lineNumber: 159,
+                                        lineNumber: 184,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/leads/page.jsx",
-                                lineNumber: 154,
+                                lineNumber: 179,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, req.id, true, {
                         fileName: "[project]/app/leads/page.jsx",
-                        lineNumber: 130,
+                        lineNumber: 155,
                         columnNumber: 13
                     }, this))
             }, void 0, false, {
                 fileName: "[project]/app/leads/page.jsx",
-                lineNumber: 122,
+                lineNumber: 147,
                 columnNumber: 7
+            }, this),
+            hasMore && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "mt-6 flex justify-center",
+                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                    onClick: ()=>fetchRequirements({
+                            reset: false,
+                            nextOffset: offset,
+                            searchTerm: search,
+                            status: filterStatus
+                        }),
+                    disabled: loadingMore,
+                    className: "px-5 py-2 rounded-full border border-aa-orange text-aa-orange font-semibold hover:bg-aa-orange hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed",
+                    children: loadingMore ? 'Loading...' : 'Load more'
+                }, void 0, false, {
+                    fileName: "[project]/app/leads/page.jsx",
+                    lineNumber: 195,
+                    columnNumber: 11
+                }, this)
+            }, void 0, false, {
+                fileName: "[project]/app/leads/page.jsx",
+                lineNumber: 194,
+                columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/leads/page.jsx",
-        lineNumber: 87,
+        lineNumber: 112,
         columnNumber: 5
     }, this);
 }

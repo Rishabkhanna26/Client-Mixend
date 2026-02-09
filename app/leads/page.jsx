@@ -7,23 +7,53 @@ import { faBullseye, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons
 export default function LeadsPage() {
   const [requirements, setRequirements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [updatingId, setUpdatingId] = useState(null);
 
   useEffect(() => {
-    fetchRequirements();
-  }, []);
+    const handle = setTimeout(() => {
+      fetchRequirements({ reset: true, nextOffset: 0, searchTerm: search, status: filterStatus });
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [search, filterStatus]);
 
-  async function fetchRequirements() {
+  async function fetchRequirements({ reset = false, nextOffset = 0, searchTerm = '', status = 'all' } = {}) {
+    if (reset) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     try {
-      const response = await fetch('/api/requirements', { credentials: 'include' });
+      const params = new URLSearchParams();
+      params.set('limit', '50');
+      params.set('offset', String(nextOffset));
+      if (searchTerm) params.set('q', searchTerm);
+      if (status && status !== 'all') params.set('status', status);
+      const response = await fetch(`/api/requirements?${params.toString()}`, { credentials: 'include' });
       const data = await response.json();
-      setRequirements(data.data || []);
+      const list = data.data || [];
+      const meta = data.meta || {};
+      setHasMore(Boolean(meta.hasMore));
+      setOffset(meta.nextOffset ?? nextOffset + list.length);
+      if (reset) {
+        setRequirements(list);
+      } else {
+        setRequirements((prev) => [...prev, ...list]);
+      }
     } catch (error) {
       console.error('Failed to fetch requirements:', error);
+      if (reset) {
+        setRequirements([]);
+        setHasMore(false);
+        setOffset(0);
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }
 
@@ -56,12 +86,7 @@ export default function LeadsPage() {
     }
   }
 
-  const filteredRequirements = requirements.filter(req => {
-    const matchesSearch = req.name?.toLowerCase().includes(search.toLowerCase()) ||
-      req.requirement_text?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || req.status === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredRequirements = requirements;
 
   const getStatusColor = (status) => {
     switch(status) {
@@ -164,6 +189,25 @@ export default function LeadsPage() {
           ))
         )}
       </div>
+
+      {hasMore && (
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={() =>
+              fetchRequirements({
+                reset: false,
+                nextOffset: offset,
+                searchTerm: search,
+                status: filterStatus,
+              })
+            }
+            disabled={loadingMore}
+            className="px-5 py-2 rounded-full border border-aa-orange text-aa-orange font-semibold hover:bg-aa-orange hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loadingMore ? 'Loading...' : 'Load more'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -160,6 +160,7 @@ export async function initDatabase() {
       `,
       `CREATE INDEX IF NOT EXISTS admin_accounts_admin_tier_idx ON admin_accounts (admin_tier)`,
       `CREATE INDEX IF NOT EXISTS admin_accounts_phone_idx ON admin_accounts (phone)`,
+      `CREATE INDEX IF NOT EXISTS admin_accounts_email_lower_idx ON admin_accounts (LOWER(email))`,
 
       `
       CREATE TABLE IF NOT EXISTS users (
@@ -174,6 +175,8 @@ export async function initDatabase() {
       `,
       `CREATE INDEX IF NOT EXISTS users_phone_idx ON users (phone)`,
       `CREATE INDEX IF NOT EXISTS users_assigned_admin_idx ON users (assigned_admin_id)`,
+      `CREATE INDEX IF NOT EXISTS users_created_idx ON users (created_at)`,
+      `CREATE INDEX IF NOT EXISTS users_email_lower_idx ON users (LOWER(email))`,
 
       `
       CREATE TABLE IF NOT EXISTS messages (
@@ -188,6 +191,8 @@ export async function initDatabase() {
       `,
       `CREATE INDEX IF NOT EXISTS messages_user_created_idx ON messages (user_id, created_at)`,
       `CREATE INDEX IF NOT EXISTS messages_admin_created_idx ON messages (admin_id, created_at)`,
+      `CREATE INDEX IF NOT EXISTS messages_created_idx ON messages (created_at)`,
+      `CREATE INDEX IF NOT EXISTS messages_type_created_idx ON messages (message_type, created_at)`,
 
       `
       CREATE TABLE IF NOT EXISTS user_requirements (
@@ -201,6 +206,7 @@ export async function initDatabase() {
       )
       `,
       `CREATE INDEX IF NOT EXISTS user_requirements_user_status_idx ON user_requirements (user_id, status)`,
+      `CREATE INDEX IF NOT EXISTS user_requirements_created_idx ON user_requirements (created_at)`,
 
       `
       CREATE TABLE IF NOT EXISTS user_needs (
@@ -215,6 +221,7 @@ export async function initDatabase() {
       )
       `,
       `CREATE INDEX IF NOT EXISTS user_needs_user_status_idx ON user_needs (user_id, status)`,
+      `CREATE INDEX IF NOT EXISTS user_needs_created_idx ON user_needs (created_at)`,
 
       `
       CREATE TABLE IF NOT EXISTS broadcasts (
@@ -233,6 +240,7 @@ export async function initDatabase() {
       `,
       `CREATE INDEX IF NOT EXISTS broadcasts_status_idx ON broadcasts (status)`,
       `CREATE INDEX IF NOT EXISTS broadcasts_created_by_idx ON broadcasts (created_by)`,
+      `CREATE INDEX IF NOT EXISTS broadcasts_created_idx ON broadcasts (created_at)`,
 
       `
       CREATE TABLE IF NOT EXISTS message_templates (
@@ -248,6 +256,7 @@ export async function initDatabase() {
       `,
       `CREATE INDEX IF NOT EXISTS message_templates_category_idx ON message_templates (category)`,
       `CREATE INDEX IF NOT EXISTS message_templates_created_by_idx ON message_templates (created_by)`,
+      `CREATE INDEX IF NOT EXISTS message_templates_created_idx ON message_templates (created_at)`,
     ];
 
     for (const sql of tableQueries) {

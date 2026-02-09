@@ -18,8 +18,16 @@ import {
 
 export default function BroadcastPage() {
   const [broadcasts, setBroadcasts] = useState([]);
-  const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [stats, setStats] = useState({
+    total_count: 0,
+    total_sent: 0,
+    total_delivered: 0,
+    scheduled_count: 0,
+  });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newBroadcast, setNewBroadcast] = useState({
     title: '',
@@ -29,23 +37,51 @@ export default function BroadcastPage() {
   });
 
   useEffect(() => {
-    fetchData();
+    fetchBroadcasts({ reset: true, nextOffset: 0 });
   }, []);
 
-  const fetchData = async () => {
+  const fetchBroadcasts = async ({ reset = false, nextOffset = 0 } = {}) => {
+    if (!reset) {
+      setLoadingMore(true);
+    }
     try {
-      const [broadcastsRes, contactsRes] = await Promise.all([
-        fetch('/api/broadcasts', { credentials: 'include' }),
-        fetch('/api/users', { credentials: 'include' })
-      ]);
+      const params = new URLSearchParams();
+      params.set('limit', '25');
+      params.set('offset', String(nextOffset));
+      const broadcastsRes = await fetch(`/api/broadcasts?${params.toString()}`, { credentials: 'include' });
       const broadcastsData = await broadcastsRes.json();
-      const contactsData = await contactsRes.json();
-      setBroadcasts(broadcastsData.data || []);
-      setContacts(contactsData.data || []);
+      const list = broadcastsData.data || [];
+      const meta = broadcastsData.meta || {};
+      const nextStats = broadcastsData.stats || {};
+      setStats((prev) => ({
+        total_count: Number(nextStats.total_count ?? prev.total_count ?? 0),
+        total_sent: Number(nextStats.total_sent ?? prev.total_sent ?? 0),
+        total_delivered: Number(nextStats.total_delivered ?? prev.total_delivered ?? 0),
+        scheduled_count: Number(nextStats.scheduled_count ?? prev.scheduled_count ?? 0),
+      }));
+      setHasMore(Boolean(meta.hasMore));
+      setOffset(meta.nextOffset ?? nextOffset + list.length);
+      if (reset) {
+        setBroadcasts(list);
+      } else {
+        setBroadcasts((prev) => [...prev, ...list]);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
+      if (reset) {
+        setBroadcasts([]);
+        setHasMore(false);
+        setOffset(0);
+        setStats({
+          total_count: 0,
+          total_sent: 0,
+          total_delivered: 0,
+          scheduled_count: 0,
+        });
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -69,7 +105,7 @@ export default function BroadcastPage() {
       }
       setShowCreateModal(false);
       setNewBroadcast({ title: '', message: '', target_audience: 'all', scheduled_at: '' });
-      fetchData();
+      fetchBroadcasts({ reset: true, nextOffset: 0 });
     } catch (error) {
       console.error('Error creating broadcast:', error);
     }
@@ -113,7 +149,7 @@ export default function BroadcastPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-aa-gray text-sm font-semibold mb-1">Total Campaigns</p>
-              <h3 className="text-2xl font-bold text-aa-dark-blue">{broadcasts.length}</h3>
+              <h3 className="text-2xl font-bold text-aa-dark-blue">{stats.total_count}</h3>
             </div>
             <div className="w-12 h-12 bg-aa-orange/10 rounded-lg flex items-center justify-center">
               <FontAwesomeIcon icon={faPaperPlane} className="text-aa-orange" style={{ fontSize: 24 }} />
@@ -125,7 +161,7 @@ export default function BroadcastPage() {
             <div>
               <p className="text-aa-gray text-sm font-semibold mb-1">Total Sent</p>
               <h3 className="text-2xl font-bold text-aa-dark-blue">
-                {broadcasts.reduce((sum, b) => sum + (b.sent_count || 0), 0)}
+                {stats.total_sent}
               </h3>
             </div>
             <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -138,7 +174,7 @@ export default function BroadcastPage() {
             <div>
               <p className="text-aa-gray text-sm font-semibold mb-1">Delivered</p>
               <h3 className="text-2xl font-bold text-aa-dark-blue">
-                {broadcasts.reduce((sum, b) => sum + (b.delivered_count || 0), 0)}
+                {stats.total_delivered}
               </h3>
             </div>
             <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -151,7 +187,7 @@ export default function BroadcastPage() {
             <div>
               <p className="text-aa-gray text-sm font-semibold mb-1">Scheduled</p>
               <h3 className="text-2xl font-bold text-aa-dark-blue">
-                {broadcasts.filter(b => b.status === 'scheduled').length}
+                {stats.scheduled_count}
               </h3>
             </div>
             <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
@@ -216,6 +252,18 @@ export default function BroadcastPage() {
         </div>
       </Card>
 
+      {hasMore && (
+        <div className="flex justify-center">
+          <button
+            onClick={() => fetchBroadcasts({ reset: false, nextOffset: offset })}
+            disabled={loadingMore}
+            className="px-5 py-2 rounded-full border border-aa-orange text-aa-orange font-semibold hover:bg-aa-orange hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loadingMore ? 'Loading...' : 'Load more'}
+          </button>
+        </div>
+      )}
+
       {/* Create Broadcast Modal */}
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Broadcast Campaign" size="lg">
         <form onSubmit={handleCreateBroadcast} className="space-y-4">
@@ -247,7 +295,7 @@ export default function BroadcastPage() {
               onChange={(e) => setNewBroadcast({ ...newBroadcast, target_audience: e.target.value })}
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
             >
-              <option value="all">All Contacts ({contacts.length})</option>
+              <option value="all">All Contacts</option>
               <option value="vip">VIP Contacts</option>
               <option value="new">New Contacts</option>
               <option value="interested">Interested Contacts</option>

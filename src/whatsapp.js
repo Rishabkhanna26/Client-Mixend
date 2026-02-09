@@ -11,6 +11,46 @@ export const whatsappEvents = new EventEmitter();
    MULTI-ADMIN WHATSAPP SESSIONS
    =============================== */
 const sessions = new Map();
+const MAX_SESSIONS = Number(process.env.WHATSAPP_MAX_SESSIONS || 5);
+const USER_IDLE_TTL_MS = Number(process.env.WHATSAPP_USER_IDLE_TTL_MS || 6 * 60 * 60 * 1000);
+const SESSION_IDLE_TTL_MS = Number(process.env.WHATSAPP_SESSION_IDLE_TTL_MS || 30 * 60 * 1000);
+const CLEANUP_INTERVAL_MS = Number(process.env.WHATSAPP_CLEANUP_INTERVAL_MS || 15 * 60 * 1000);
+
+const touchSession = (session) => {
+  if (!session?.state) return;
+  session.state.lastActivityAt = Date.now();
+};
+
+const cleanupSessions = () => {
+  const now = Date.now();
+  for (const [adminId, session] of sessions.entries()) {
+    if (!session) continue;
+
+    const users = session.users || {};
+    for (const [key, user] of Object.entries(users)) {
+      const lastSeen = user?.lastUserMessageAt || 0;
+      if (lastSeen && now - lastSeen > USER_IDLE_TTL_MS) {
+        if (user?.idleTimer) {
+          clearTimeout(user.idleTimer);
+        }
+        delete users[key];
+      }
+    }
+
+    const lastActive = session.state?.lastActivityAt || 0;
+    if (!session.state?.isReady && session.state?.hasStarted && lastActive && now - lastActive > SESSION_IDLE_TTL_MS) {
+      try {
+        session.client?.destroy?.();
+      } catch (err) {
+        console.warn("⚠️ Failed to destroy idle WhatsApp session:", err?.message || err);
+      }
+      sessions.delete(adminId);
+    }
+  }
+};
+
+const cleanupTimer = setInterval(cleanupSessions, CLEANUP_INTERVAL_MS);
+if (cleanupTimer.unref) cleanupTimer.unref();
 
 const createClient = (adminId) =>
   new Client({
@@ -51,6 +91,7 @@ const updateAdminWhatsAppDetails = async (session) => {
 
 const emitStatus = (session, nextStatus) => {
   session.state.status = nextStatus;
+  touchSession(session);
   whatsappEvents.emit("status", {
     adminId: session.adminId,
     ...buildStateResponse(session),
@@ -58,6 +99,7 @@ const emitStatus = (session, nextStatus) => {
 };
 
 const emitQr = (session, qrImageValue) => {
+  touchSession(session);
   whatsappEvents.emit("qr", { adminId: session.adminId, qrImage: qrImageValue });
 };
 
@@ -115,6 +157,7 @@ const createSession = (adminId) => {
       latestQrImage: null,
       activeAdminNumber: null,
       activeAdminName: null,
+      lastActivityAt: Date.now(),
     },
     users: Object.create(null),
   };
@@ -127,13 +170,22 @@ export const startWhatsApp = async (adminId) => {
   if (!Number.isFinite(adminId)) {
     return { status: "idle", alreadyStarted: false, error: "adminId required" };
   }
-  const session = sessions.get(adminId) || createSession(adminId);
+  const existingSession = sessions.get(adminId);
+  if (!existingSession && sessions.size >= MAX_SESSIONS) {
+    return {
+      status: "idle",
+      alreadyStarted: false,
+      error: `Max WhatsApp sessions reached (${MAX_SESSIONS}).`,
+    };
+  }
+  const session = existingSession || createSession(adminId);
 
   if (session.state.hasStarted) {
     return { ...buildStateResponse(session), alreadyStarted: true };
   }
 
   session.state.hasStarted = true;
+  touchSession(session);
   emitStatus(session, "starting");
   try {
     await session.client.initialize();
@@ -166,6 +218,7 @@ export const stopWhatsApp = async (adminId) => {
         clearTimeout(user.idleTimer);
       }
     });
+    touchSession(session);
     session.state.hasStarted = false;
     session.state.isReady = false;
     session.state.latestQrImage = null;
@@ -719,6 +772,7 @@ function attachAutomationHandlers(session) {
     try {
       if (!session.state.isReady) return;
       if (!message || message.fromMe) return;
+      touchSession(session);
 
     const from = message.from;
     if (!from || from.endsWith("@g.us")) return;

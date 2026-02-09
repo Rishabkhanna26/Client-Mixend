@@ -1,5 +1,6 @@
 import { requireAuth } from '../../../lib/auth-server';
-import { createBroadcast, getAllBroadcasts } from '../../../lib/db-helpers';
+import { createBroadcast, getAllBroadcasts, getBroadcastStats } from '../../../lib/db-helpers';
+import { parsePagination, parseSearch } from '../../../lib/api-utils';
 
 function normalizeSchedule(value) {
   if (!value) return null;
@@ -15,13 +16,34 @@ function normalizeSchedule(value) {
   return trimmed;
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
     const authUser = await requireAuth();
-    const broadcasts = await getAllBroadcasts(
-      authUser.admin_tier === 'super_admin' ? null : authUser.id
-    );
-    return Response.json({ success: true, data: broadcasts });
+    const { searchParams } = new URL(request.url);
+    const { limit, offset } = parsePagination(searchParams);
+    const search = parseSearch(searchParams);
+    const [broadcasts, stats] = await Promise.all([
+      getAllBroadcasts(
+        authUser.admin_tier === 'super_admin' ? null : authUser.id,
+        { search, limit: limit + 1, offset }
+      ),
+      getBroadcastStats(authUser.admin_tier === 'super_admin' ? null : authUser.id),
+    ]);
+    const hasMore = broadcasts.length > limit;
+    const data = hasMore ? broadcasts.slice(0, limit) : broadcasts;
+    const response = Response.json({
+      success: true,
+      data,
+      stats,
+      meta: {
+        limit,
+        offset,
+        hasMore,
+        nextOffset: hasMore ? offset + limit : null,
+      },
+    });
+    response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=120');
+    return response;
   } catch (error) {
     if (error.status === 401) {
       return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });

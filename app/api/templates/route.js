@@ -1,13 +1,31 @@
 import { requireAuth } from '../../../lib/auth-server';
 import { createTemplate, getAllTemplates } from '../../../lib/db-helpers';
+import { parsePagination, parseSearch } from '../../../lib/api-utils';
 
-export async function GET() {
+export async function GET(request) {
   try {
     const authUser = await requireAuth();
+    const { searchParams } = new URL(request.url);
+    const { limit, offset } = parsePagination(searchParams);
+    const search = parseSearch(searchParams);
     const templates = await getAllTemplates(
-      authUser.admin_tier === 'super_admin' ? null : authUser.id
+      authUser.admin_tier === 'super_admin' ? null : authUser.id,
+      { search, limit: limit + 1, offset }
     );
-    return Response.json({ success: true, data: templates });
+    const hasMore = templates.length > limit;
+    const data = hasMore ? templates.slice(0, limit) : templates;
+    const response = Response.json({
+      success: true,
+      data,
+      meta: {
+        limit,
+        offset,
+        hasMore,
+        nextOffset: hasMore ? offset + limit : null,
+      },
+    });
+    response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=120');
+    return response;
   } catch (error) {
     if (error.status === 401) {
       return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });

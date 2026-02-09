@@ -101,6 +101,24 @@ const io = new Server(server, {
   },
 });
 
+const enableRedisAdapter = async (ioServer) => {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) return;
+  try {
+    const { createClient } = await import("redis");
+    const { createAdapter } = await import("@socket.io/redis-adapter");
+    const pubClient = createClient({ url: redisUrl });
+    const subClient = pubClient.duplicate();
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+    ioServer.adapter(createAdapter(pubClient, subClient));
+    console.log("✅ Socket.IO Redis adapter enabled");
+  } catch (err) {
+    console.warn("⚠️ Redis adapter not enabled:", err?.message || err);
+  }
+};
+
+await enableRedisAdapter(io);
+
 io.on("connection", (socket) => {
   const adminId = Number(socket.handshake.query?.adminId);
   if (Number.isFinite(adminId)) {

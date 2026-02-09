@@ -7,29 +7,54 @@ import { faEnvelope, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons
 export default function InboxPage() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    fetchMessages();
-  }, []);
+    const handle = setTimeout(() => {
+      fetchMessages({ reset: true, nextOffset: 0, searchTerm: search });
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [search]);
 
-  async function fetchMessages() {
+  async function fetchMessages({ reset = false, nextOffset = 0, searchTerm = '' } = {}) {
+    if (reset) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     try {
-      const response = await fetch('/api/messages');
+      const params = new URLSearchParams();
+      params.set('limit', '50');
+      params.set('offset', String(nextOffset));
+      if (searchTerm) params.set('q', searchTerm);
+      const response = await fetch(`/api/messages?${params.toString()}`);
       const data = await response.json();
-      setMessages(data.data || []);
+      const list = data.data || [];
+      const meta = data.meta || {};
+      setHasMore(Boolean(meta.hasMore));
+      setOffset(meta.nextOffset ?? nextOffset + list.length);
+      if (reset) {
+        setMessages(list);
+      } else {
+        setMessages((prev) => [...prev, ...list]);
+      }
     } catch (error) {
       console.error('Failed to fetch messages:', error);
+      if (reset) {
+        setMessages([]);
+        setHasMore(false);
+        setOffset(0);
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }
 
-  const filteredMessages = messages.filter(msg =>
-    msg.user_name?.toLowerCase().includes(search.toLowerCase()) ||
-    msg.phone?.includes(search) ||
-    msg.message_text?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredMessages = messages;
 
   if (loading) {
     return (
@@ -107,6 +132,18 @@ export default function InboxPage() {
           ))
         )}
       </div>
+
+      {hasMore && (
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={() => fetchMessages({ reset: false, nextOffset: offset, searchTerm: search })}
+            disabled={loadingMore}
+            className="px-5 py-2 rounded-full border border-aa-orange text-aa-orange font-semibold hover:bg-aa-orange hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loadingMore ? 'Loading...' : 'Load more'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

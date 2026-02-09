@@ -228,6 +228,8 @@ __turbopack_context__.s([
     ()=>getAllUsers,
     "getBroadcastById",
     ()=>getBroadcastById,
+    "getBroadcastStats",
+    ()=>getBroadcastStats,
     "getDashboardStats",
     ()=>getDashboardStats,
     "getMessagesForUser",
@@ -251,22 +253,34 @@ var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
 ]);
 [__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__] = __turbopack_async_dependencies__.then ? (await __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
 ;
-async function getAllUsers(adminId = null) {
+async function getAllUsers(adminId = null, { search = '', limit = 50, offset = 0 } = {}) {
     const connection = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["getConnection"])();
     try {
         const params = [];
-        let whereClause = '';
+        const whereParts = [];
         if (adminId) {
-            whereClause = 'WHERE u.assigned_admin_id = ?';
+            whereParts.push('u.assigned_admin_id = ?');
             params.push(adminId);
         }
+        if (search) {
+            const q = `%${search.toLowerCase()}%`;
+            whereParts.push('(LOWER(u.name) LIKE ? OR u.phone LIKE ? OR LOWER(u.email) LIKE ?)');
+            params.push(q, q, q);
+        }
+        const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
         const [users] = await connection.query(`
         SELECT u.*, a.name as admin_name
         FROM users u
         LEFT JOIN admin_accounts a ON u.assigned_admin_id = a.id
         ${whereClause}
-        ORDER BY u.created_at DESC
-      `, params);
+        ORDER BY u.created_at DESC, u.id DESC
+        LIMIT ?
+        OFFSET ?
+      `, [
+            ...params,
+            limit,
+            offset
+        ]);
         return users;
     } finally{
         connection.release();
@@ -294,68 +308,109 @@ async function getUserById(userId, adminId = null) {
         connection.release();
     }
 }
-async function getAllMessages(adminId = null) {
+async function getAllMessages(adminId = null, { search = '', limit = 50, offset = 0 } = {}) {
     const connection = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["getConnection"])();
     try {
         const params = [];
-        let whereClause = '';
+        const whereParts = [];
         if (adminId) {
-            whereClause = 'WHERE m.admin_id = ?';
+            whereParts.push('m.admin_id = ?');
             params.push(adminId);
         }
+        if (search) {
+            const q = `%${search.toLowerCase()}%`;
+            whereParts.push('(LOWER(u.name) LIKE ? OR u.phone LIKE ? OR LOWER(m.message_text) LIKE ?)');
+            params.push(q, q, q);
+        }
+        const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
         const [messages] = await connection.query(`
         SELECT m.*, u.name as user_name, u.phone, a.name as admin_name
         FROM messages m
         LEFT JOIN users u ON m.user_id = u.id
         LEFT JOIN admin_accounts a ON m.admin_id = a.id
         ${whereClause}
-        ORDER BY m.created_at DESC
-      `, params);
+        ORDER BY m.created_at DESC, m.id DESC
+        LIMIT ?
+        OFFSET ?
+      `, [
+            ...params,
+            limit,
+            offset
+        ]);
         return messages;
     } finally{
         connection.release();
     }
 }
-async function getMessagesForUser(userId, adminId = null) {
+async function getMessagesForUser(userId, adminId = null, { limit = 50, offset = 0, before = null } = {}) {
     const connection = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["getConnection"])();
     try {
         const params = [
             userId
         ];
-        let whereClause = 'WHERE m.user_id = ?';
+        const whereParts = [
+            'm.user_id = ?'
+        ];
         if (adminId) {
-            whereClause += ' AND m.admin_id = ?';
+            whereParts.push('m.admin_id = ?');
             params.push(adminId);
         }
+        if (before) {
+            whereParts.push('m.created_at < ?');
+            params.push(before);
+        }
+        const whereClause = `WHERE ${whereParts.join(' AND ')}`;
         const [messages] = await connection.query(`
         SELECT m.*, u.name as user_name, a.name as admin_name
         FROM messages m
         LEFT JOIN users u ON m.user_id = u.id
         LEFT JOIN admin_accounts a ON m.admin_id = a.id
         ${whereClause}
-        ORDER BY m.created_at DESC
-      `, params);
+        ORDER BY m.created_at DESC, m.id DESC
+        LIMIT ?
+        OFFSET ?
+      `, [
+            ...params,
+            limit,
+            offset
+        ]);
         return messages;
     } finally{
         connection.release();
     }
 }
-async function getAllRequirements(adminId = null) {
+async function getAllRequirements(adminId = null, { search = '', status = 'all', limit = 50, offset = 0 } = {}) {
     const connection = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["getConnection"])();
     try {
         const params = [];
-        let whereClause = '';
+        const whereParts = [];
         if (adminId) {
-            whereClause = 'WHERE u.assigned_admin_id = ?';
+            whereParts.push('u.assigned_admin_id = ?');
             params.push(adminId);
         }
+        if (status && status !== 'all') {
+            whereParts.push('r.status = ?');
+            params.push(status);
+        }
+        if (search) {
+            const q = `%${search.toLowerCase()}%`;
+            whereParts.push('(LOWER(u.name) LIKE ? OR LOWER(r.requirement_text) LIKE ?)');
+            params.push(q, q);
+        }
+        const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
         const [requirements] = await connection.query(`
         SELECT r.*, u.name, u.phone
         FROM user_requirements r
         LEFT JOIN users u ON r.user_id = u.id
         ${whereClause}
-        ORDER BY r.created_at DESC
-      `, params);
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT ?
+        OFFSET ?
+      `, [
+            ...params,
+            limit,
+            offset
+        ]);
         return requirements;
     } finally{
         connection.release();
@@ -397,23 +452,39 @@ async function updateRequirementStatus(requirementId, status, adminId = null) {
         connection.release();
     }
 }
-async function getAllNeeds(adminId = null) {
+async function getAllNeeds(adminId = null, { search = '', status = 'all', limit = 50, offset = 0 } = {}) {
     const connection = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["getConnection"])();
     try {
         const params = [];
-        let whereClause = '';
+        const whereParts = [];
         if (adminId) {
-            whereClause = 'WHERE u.assigned_admin_id = ?';
+            whereParts.push('u.assigned_admin_id = ?');
             params.push(adminId);
         }
+        if (status && status !== 'all') {
+            whereParts.push('n.status = ?');
+            params.push(status);
+        }
+        if (search) {
+            const q = `%${search.toLowerCase()}%`;
+            whereParts.push('(LOWER(u.name) LIKE ? OR LOWER(n.need_text) LIKE ?)');
+            params.push(q, q);
+        }
+        const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
         const [needs] = await connection.query(`
         SELECT n.*, u.name, u.phone, a.name as assigned_admin_name
         FROM user_needs n
         LEFT JOIN users u ON n.user_id = u.id
         LEFT JOIN admin_accounts a ON n.assigned_to = a.id
         ${whereClause}
-        ORDER BY n.created_at DESC
-      `, params);
+        ORDER BY n.created_at DESC, n.id DESC
+        LIMIT ?
+        OFFSET ?
+      `, [
+            ...params,
+            limit,
+            offset
+        ]);
         return needs;
     } finally{
         connection.release();
@@ -539,23 +610,63 @@ function parseTemplateVariables(value) {
         return [];
     }
 }
-async function getAllBroadcasts(adminId = null) {
+async function getAllBroadcasts(adminId = null, { search = '', limit = 50, offset = 0 } = {}) {
     const connection = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["getConnection"])();
     try {
         const params = [];
-        let whereClause = '';
+        const whereParts = [];
         if (adminId) {
-            whereClause = 'WHERE b.created_by = ?';
+            whereParts.push('b.created_by = ?');
             params.push(adminId);
         }
+        if (search) {
+            const q = `%${search.toLowerCase()}%`;
+            whereParts.push('(LOWER(b.title) LIKE ? OR LOWER(b.message) LIKE ?)');
+            params.push(q, q);
+        }
+        const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
         const [rows] = await connection.query(`
         SELECT b.*, a.name as created_by_name
         FROM broadcasts b
         LEFT JOIN admin_accounts a ON b.created_by = a.id
         ${whereClause}
-        ORDER BY b.created_at DESC
-      `, params);
+        ORDER BY b.created_at DESC, b.id DESC
+        LIMIT ?
+        OFFSET ?
+      `, [
+            ...params,
+            limit,
+            offset
+        ]);
         return rows;
+    } finally{
+        connection.release();
+    }
+}
+async function getBroadcastStats(adminId = null) {
+    const connection = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["getConnection"])();
+    try {
+        const params = [];
+        let whereClause = '';
+        if (adminId) {
+            whereClause = 'WHERE created_by = ?';
+            params.push(adminId);
+        }
+        const [rows] = await connection.query(`
+        SELECT
+          COUNT(*)::int as total_count,
+          COALESCE(SUM(sent_count), 0)::int as total_sent,
+          COALESCE(SUM(delivered_count), 0)::int as total_delivered,
+          SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END)::int as scheduled_count
+        FROM broadcasts
+        ${whereClause}
+      `, params);
+        return rows[0] || {
+            total_count: 0,
+            total_sent: 0,
+            total_delivered: 0,
+            scheduled_count: 0
+        };
     } finally{
         connection.release();
     }
@@ -594,22 +705,34 @@ async function createBroadcast({ title, message, targetAudienceType, scheduledAt
         connection.release();
     }
 }
-async function getAllTemplates(adminId = null) {
+async function getAllTemplates(adminId = null, { search = '', limit = 50, offset = 0 } = {}) {
     const connection = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["getConnection"])();
     try {
         const params = [];
-        let whereClause = '';
+        const whereParts = [];
         if (adminId) {
-            whereClause = 'WHERE t.created_by = ?';
+            whereParts.push('t.created_by = ?');
             params.push(adminId);
         }
+        if (search) {
+            const q = `%${search.toLowerCase()}%`;
+            whereParts.push('(LOWER(t.name) LIKE ? OR LOWER(t.category) LIKE ? OR LOWER(t.content) LIKE ?)');
+            params.push(q, q, q);
+        }
+        const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
         const [rows] = await connection.query(`
         SELECT t.*, a.name as created_by_name
         FROM message_templates t
         LEFT JOIN admin_accounts a ON t.created_by = a.id
         ${whereClause}
-        ORDER BY t.created_at DESC
-      `, params);
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT ?
+        OFFSET ?
+      `, [
+            ...params,
+            limit,
+            offset
+        ]);
         return rows.map((row)=>({
                 ...row,
                 variables: parseTemplateVariables(row.variables_json)
@@ -693,11 +816,11 @@ async function getReportOverview(startDate, adminId = null) {
             messageParams.push(adminId);
         }
         const [messageStats] = await connection.query(`
-        SELECT DATE(created_at) as date, COUNT(*) as count
+        SELECT date_trunc('day', created_at) as date, COUNT(*) as count
         FROM messages
         ${messageWhere}
-        GROUP BY DATE(created_at)
-        ORDER BY DATE(created_at)
+        GROUP BY date_trunc('day', created_at)
+        ORDER BY date_trunc('day', created_at)
       `, messageParams);
         if (adminId) {
             const [leadStats] = await connection.query(`
