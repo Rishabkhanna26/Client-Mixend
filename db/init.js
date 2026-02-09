@@ -125,6 +125,29 @@ async function ensureAdminWhatsappColumns(client) {
   }
 }
 
+async function ensureAdminAIColumns(client) {
+  const columns = [
+    { name: "ai_enabled", sql: "ALTER TABLE admin_accounts ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT FALSE" },
+    { name: "ai_prompt", sql: "ALTER TABLE admin_accounts ADD COLUMN IF NOT EXISTS ai_prompt TEXT" },
+    { name: "ai_blocklist", sql: "ALTER TABLE admin_accounts ADD COLUMN IF NOT EXISTS ai_blocklist TEXT" },
+  ];
+
+  for (const column of columns) {
+    await client.query(column.sql);
+  }
+}
+
+async function ensureAdminPasswordResetColumns(client) {
+  const columns = [
+    { name: "reset_token_hash", sql: "ALTER TABLE admin_accounts ADD COLUMN IF NOT EXISTS reset_token_hash TEXT" },
+    { name: "reset_expires_at", sql: "ALTER TABLE admin_accounts ADD COLUMN IF NOT EXISTS reset_expires_at TIMESTAMPTZ" },
+  ];
+
+  for (const column of columns) {
+    await client.query(column.sql);
+  }
+}
+
 export async function initDatabase() {
   try {
     if (!DATABASE_URL) {
@@ -264,6 +287,8 @@ export async function initDatabase() {
     }
 
     await ensureAdminWhatsappColumns(client);
+    await ensureAdminAIColumns(client);
+    await ensureAdminPasswordResetColumns(client);
     await ensureDefaultSuperAdmin(client);
 
     console.log("✅ Database ready and verified");

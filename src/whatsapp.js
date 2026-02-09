@@ -52,6 +52,82 @@ const cleanupSessions = () => {
 const cleanupTimer = setInterval(cleanupSessions, CLEANUP_INTERVAL_MS);
 if (cleanupTimer.unref) cleanupTimer.unref();
 
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
+const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+const AI_SETTINGS_TTL_MS = Number(process.env.AI_SETTINGS_TTL_MS || 60_000);
+const aiSettingsCache = new Map();
+
+const getAdminAISettings = async (adminId) => {
+  if (!Number.isFinite(adminId)) return null;
+  const cached = aiSettingsCache.get(adminId);
+  const now = Date.now();
+  if (cached && now - cached.at < AI_SETTINGS_TTL_MS) {
+    return cached.data;
+  }
+  const [rows] = await db.query(
+    `SELECT ai_enabled, ai_prompt, ai_blocklist
+     FROM admin_accounts
+     WHERE id = ?
+     LIMIT 1`,
+    [adminId]
+  );
+  const data = rows[0] || { ai_enabled: false, ai_prompt: null, ai_blocklist: null };
+  aiSettingsCache.set(adminId, { at: now, data });
+  return data;
+};
+
+const buildSystemPrompt = ({ aiPrompt, aiBlocklist }) => {
+  const parts = [
+    "You are a helpful WhatsApp assistant for AlgoAura.",
+    "Be concise, friendly, and professional.",
+    "If a request is unclear, ask a short clarifying question.",
+    "Never claim you performed actions you did not do.",
+  ];
+  if (aiPrompt && aiPrompt.trim()) {
+    parts.push(`Allowed topics / guidance: ${aiPrompt.trim()}`);
+  }
+  if (aiBlocklist && aiBlocklist.trim()) {
+    parts.push(`Do NOT discuss: ${aiBlocklist.trim()}. If asked, politely refuse and offer allowed help.`);
+  }
+  return parts.join("\n");
+};
+
+const fetchAIReply = async ({ aiPrompt, aiBlocklist, userMessage }) => {
+  if (!OPENROUTER_API_KEY) {
+    return null;
+  }
+  const systemPrompt = buildSystemPrompt({ aiPrompt, aiBlocklist });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const response = await fetch(OPENROUTER_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        temperature: 0.4,
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json();
+    const text = data?.choices?.[0]?.message?.content;
+    return typeof text === "string" ? text.trim() : null;
+  } catch (err) {
+    console.warn("⚠️ OpenRouter reply failed:", err?.message || err);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 const createClient = (adminId) =>
   new Client({
     authStrategy: new LocalAuth({
@@ -873,6 +949,21 @@ function attachAutomationHandlers(session) {
       adminId: assignedAdminId,
       text,
     });
+
+    const aiSettings = await getAdminAISettings(assignedAdminId);
+    if (aiSettings?.ai_enabled) {
+      const aiReply = await fetchAIReply({
+        aiPrompt: aiSettings.ai_prompt,
+        aiBlocklist: aiSettings.ai_blocklist,
+        userMessage: text,
+      });
+      if (aiReply) {
+        await sendMessage(aiReply);
+      } else {
+        await sendMessage("Thanks for your message. Our team will get back to you shortly.");
+      }
+      return;
+    }
 
     const now = Date.now();
     const lastMessageAt = user.lastUserMessageAt;

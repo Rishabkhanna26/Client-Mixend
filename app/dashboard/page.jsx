@@ -9,7 +9,13 @@ export default function DashboardPage() {
 	const [stats, setStats] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [messages, setMessages] = useState([]);
-	const [users, setUsers] = useState([]);
+	const [aiSettings, setAiSettings] = useState({
+		ai_enabled: false,
+		ai_prompt: '',
+		ai_blocklist: '',
+	});
+	const [aiSaving, setAiSaving] = useState(false);
+	const [aiStatus, setAiStatus] = useState('');
 
 	useEffect(() => {
 		fetchDashboardData();
@@ -17,23 +23,54 @@ export default function DashboardPage() {
 
 	async function fetchDashboardData() {
 		try {
-			const [statsRes, messagesRes, usersRes] = await Promise.all([
+			const [statsRes, messagesRes, aiRes] = await Promise.all([
 				fetch('/api/dashboard/stats'),
-				fetch('/api/messages'),
-				fetch('/api/users')
+				fetch('/api/messages?limit=5'),
+				fetch('/api/ai-settings')
 			]);
 
 			const statsData = await statsRes.json();
 			const messagesData = await messagesRes.json();
-			const usersData = await usersRes.json();
+			const aiData = await aiRes.json();
 
 			setStats(statsData.data);
 			setMessages(messagesData.data || []);
-			setUsers(usersData.data || []);
+			setAiSettings({
+				ai_enabled: Boolean(aiData?.data?.ai_enabled),
+				ai_prompt: aiData?.data?.ai_prompt || '',
+				ai_blocklist: aiData?.data?.ai_blocklist || '',
+			});
 		} catch (error) {
 			console.error('Failed to fetch dashboard data:', error);
 		} finally {
 			setLoading(false);
+		}
+	}
+
+	async function saveAiSettings() {
+		setAiSaving(true);
+		setAiStatus('');
+		try {
+			const response = await fetch('/api/ai-settings', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(aiSettings),
+			});
+			const data = await response.json();
+			if (!response.ok) {
+				throw new Error(data.error || 'Failed to save AI settings');
+			}
+			setAiSettings({
+				ai_enabled: Boolean(data?.data?.ai_enabled),
+				ai_prompt: data?.data?.ai_prompt || '',
+				ai_blocklist: data?.data?.ai_blocklist || '',
+			});
+			setAiStatus('AI settings saved.');
+			setTimeout(() => setAiStatus(''), 2000);
+		} catch (error) {
+			setAiStatus(error.message || 'Failed to save AI settings.');
+		} finally {
+			setAiSaving(false);
 		}
 	}
 
@@ -161,6 +198,75 @@ export default function DashboardPage() {
 								</span>
 							</div>
 						))
+					)}
+				</div>
+			</div>
+
+			{/* AI Reply Controls */}
+			<div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+				<h2 className="text-xl font-bold text-gray-900 mb-2">WhatsApp AI Replies</h2>
+				<p className="text-gray-600 mb-6">
+					Control what the AI is allowed to say. These rules apply to WhatsApp auto-replies.
+				</p>
+				<p className="text-xs text-gray-500 mb-6">
+					Requires <span className="font-semibold">OPENROUTER_API_KEY</span> on the backend.
+				</p>
+				<div className="flex items-center gap-3 mb-6">
+					<input
+						id="ai-enabled"
+						type="checkbox"
+						checked={aiSettings.ai_enabled}
+						onChange={(e) =>
+							setAiSettings((prev) => ({ ...prev, ai_enabled: e.target.checked }))
+						}
+						className="h-4 w-4"
+					/>
+					<label htmlFor="ai-enabled" className="text-sm font-semibold text-gray-800">
+						Enable AI replies
+					</label>
+				</div>
+				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+					<div>
+						<label className="block text-sm font-semibold text-gray-800 mb-2">
+							Allowed topics / style
+						</label>
+						<textarea
+							value={aiSettings.ai_prompt}
+							onChange={(e) =>
+								setAiSettings((prev) => ({ ...prev, ai_prompt: e.target.value }))
+							}
+							rows="6"
+							placeholder="E.g. Astrology services, booking appointments, pricing basics. Keep tone warm and professional."
+							className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
+						/>
+					</div>
+					<div>
+						<label className="block text-sm font-semibold text-gray-800 mb-2">
+							Blocked topics (do not discuss)
+						</label>
+						<textarea
+							value={aiSettings.ai_blocklist}
+							onChange={(e) =>
+								setAiSettings((prev) => ({ ...prev, ai_blocklist: e.target.value }))
+							}
+							rows="6"
+							placeholder="E.g. medical advice, legal advice, personal data, payment links."
+							className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
+						/>
+					</div>
+				</div>
+				<div className="flex items-center gap-3">
+					<button
+						onClick={saveAiSettings}
+						disabled={aiSaving}
+						className="px-5 py-2 rounded-full bg-aa-orange text-white font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+					>
+						{aiSaving ? 'Saving...' : 'Save AI Settings'}
+					</button>
+					{aiStatus && (
+						<span className={`text-sm font-semibold ${aiStatus.includes('Failed') ? 'text-red-600' : 'text-green-600'}`}>
+							{aiStatus}
+						</span>
 					)}
 				</div>
 			</div>

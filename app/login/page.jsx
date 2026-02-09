@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Button from '../components/common/Button.jsx';
 import Input from '../components/common/Input.jsx';
+import Modal from '../components/common/Modal.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faRightToBracket, faEnvelope, faLock, faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../components/auth/AuthProvider.jsx';
@@ -15,6 +16,17 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+  const [tempPassword, setTempPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetSuccess, setResetSuccess] = useState('');
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -48,6 +60,76 @@ export default function LoginPage() {
       console.error('Login error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotLoading(true);
+    try {
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: forgotIdentifier }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send temporary password');
+      }
+      setForgotOpen(false);
+      setResetOpen(true);
+      setTempPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setResetError('');
+      setResetSuccess('');
+    } catch (err) {
+      setForgotError(err.message || 'Failed to send temporary password.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setResetError('');
+    setResetSuccess('');
+    if (!tempPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) {
+      setResetError('All fields are required.');
+      return;
+    }
+    if (newPassword.trim() !== confirmPassword.trim()) {
+      setResetError('Passwords do not match.');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: forgotIdentifier,
+          tempPassword,
+          newPassword,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to reset password');
+      }
+      setResetSuccess('Password updated. You can now log in.');
+      setTimeout(() => {
+        setResetOpen(false);
+        setTempPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setResetError('');
+      }, 1500);
+    } catch (err) {
+      setResetError(err.message || 'Failed to reset password.');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -113,6 +195,20 @@ export default function LoginPage() {
             </Button>
           </form>
 
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setForgotOpen(true);
+                setForgotError('');
+                setForgotIdentifier(email || '');
+              }}
+              className="text-sm text-aa-orange font-semibold hover:underline"
+            >
+              Forgot password?
+            </button>
+          </div>
+
           <p className="text-center text-aa-gray text-sm mt-6">
             New here?{' '}
             <button
@@ -125,6 +221,91 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      <Modal
+        isOpen={forgotOpen}
+        onClose={() => setForgotOpen(false)}
+        title="Forgot Password"
+        size="sm"
+      >
+        <form onSubmit={handleForgotPassword} className="space-y-4">
+          <p className="text-sm text-aa-gray">
+            Enter your email or phone. We will send a temporary password to your email.
+          </p>
+          <Input
+            label="Email or Phone"
+            value={forgotIdentifier}
+            onChange={(e) => setForgotIdentifier(e.target.value)}
+            placeholder="you@example.com or phone"
+            required
+          />
+          {forgotError && (
+            <p className="text-sm text-red-600">{forgotError}</p>
+          )}
+          <div className="flex gap-3">
+            <Button type="submit" variant="primary" className="flex-1" disabled={forgotLoading}>
+              {forgotLoading ? 'Sending...' : 'Send Temporary Password'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setForgotOpen(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={resetOpen}
+        onClose={() => setResetOpen(false)}
+        title="Reset Password"
+        size="sm"
+      >
+        <form onSubmit={handleResetPassword} className="space-y-4">
+          <Input
+            label="Temporary Password"
+            type="text"
+            value={tempPassword}
+            onChange={(e) => setTempPassword(e.target.value)}
+            placeholder="Enter the temp password from email"
+            required
+          />
+          <Input
+            label="New Password"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="New password"
+            required
+          />
+          <Input
+            label="Confirm Password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm new password"
+            required
+          />
+          {resetError && <p className="text-sm text-red-600">{resetError}</p>}
+          {resetSuccess && <p className="text-sm text-green-600">{resetSuccess}</p>}
+          <div className="flex gap-3">
+            <Button type="submit" variant="primary" className="flex-1" disabled={resetLoading}>
+              {resetLoading ? 'Saving...' : 'Save New Password'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setResetOpen(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
