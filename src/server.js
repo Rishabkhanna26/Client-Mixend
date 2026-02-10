@@ -127,7 +127,7 @@ io.on("connection", (socket) => {
     const state = getWhatsAppState(adminId);
     socket.emit("whatsapp:status", state);
     if (state.qrImage) {
-      socket.emit("whatsapp:qr", state.qrImage);
+      socket.emit("whatsapp:qr", { qrImage: state.qrImage });
     }
   } else {
     socket.emit("whatsapp:status", getWhatsAppState());
@@ -145,11 +145,15 @@ whatsappEvents.on("status", (payload) => {
 
 whatsappEvents.on("qr", (payload) => {
   const adminId = Number(payload?.adminId);
+  const qrPayload =
+    payload && typeof payload === "object"
+      ? { qr: payload.qr, qrImage: payload.qrImage }
+      : payload;
   if (Number.isFinite(adminId)) {
-    io.to(`admin:${adminId}`).emit("whatsapp:qr", payload.qrImage);
+    io.to(`admin:${adminId}`).emit("whatsapp:qr", qrPayload);
     return;
   }
-  io.emit("whatsapp:qr", payload?.qrImage || payload);
+  io.emit("whatsapp:qr", qrPayload);
 });
 
 let currentPort = BASE_PORT;

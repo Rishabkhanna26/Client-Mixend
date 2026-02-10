@@ -13,7 +13,7 @@ export const whatsappEvents = new EventEmitter();
 const sessions = new Map();
 const MAX_SESSIONS = Number(process.env.WHATSAPP_MAX_SESSIONS || 5);
 const USER_IDLE_TTL_MS = Number(process.env.WHATSAPP_USER_IDLE_TTL_MS || 6 * 60 * 60 * 1000);
-const SESSION_IDLE_TTL_MS = Number(process.env.WHATSAPP_SESSION_IDLE_TTL_MS || 30 * 60 * 1000);
+const SESSION_IDLE_TTL_MS = Number(process.env.WHATSAPP_SESSION_IDLE_TTL_MS || 6 * 60 * 60 * 1000);
 const CLEANUP_INTERVAL_MS = Number(process.env.WHATSAPP_CLEANUP_INTERVAL_MS || 15 * 60 * 1000);
 
 const touchSession = (session) => {
@@ -214,9 +214,9 @@ const emitStatus = (session, nextStatus) => {
   });
 };
 
-const emitQr = (session, qrImageValue) => {
+const emitQr = (session, payload) => {
   touchSession(session);
-  whatsappEvents.emit("qr", { adminId: session.adminId, qrImage: qrImageValue });
+  whatsappEvents.emit("qr", { adminId: session.adminId, ...payload });
 };
 
 const attachClientEvents = (session) => {
@@ -225,11 +225,13 @@ const attachClientEvents = (session) => {
   client.on("qr", async (qr) => {
     emitStatus(session, "qr");
     session.state.isReady = false;
+    session.state.latestQrImage = null;
     console.log(`📱 Scan the QR code (admin ${session.adminId})`);
     qrcode.generate(qr, { small: true });
+    emitQr(session, { qr });
     try {
       session.state.latestQrImage = await qrImage.toDataURL(qr);
-      emitQr(session, session.state.latestQrImage);
+      emitQr(session, { qr, qrImage: session.state.latestQrImage });
     } catch (err) {
       console.error("❌ QR generation failed:", err);
     }

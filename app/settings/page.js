@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import Card from '../components/common/Card.jsx';
 import Button from '../components/common/Button.jsx';
@@ -35,6 +35,8 @@ export default function SettingsPage() {
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState('idle');
   const [whatsappQr, setWhatsappQr] = useState('');
+  const [whatsappQrVersion, setWhatsappQrVersion] = useState(0);
+  const whatsappQrJobRef = useRef(0);
   const [whatsappActionStatus, setWhatsappActionStatus] = useState('');
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState('');
@@ -53,6 +55,28 @@ export default function SettingsPage() {
 
   const updatePasswordField = (field) => (event) =>
     setPasswordForm((prev) => ({ ...prev, [field]: event.target.value }));
+
+  const updateWhatsappQr = useCallback((nextQr) => {
+    setWhatsappQr(nextQr || '');
+    setWhatsappQrVersion((prev) => prev + 1);
+    whatsappQrJobRef.current += 1;
+  }, []);
+
+  const renderQrFromRaw = useCallback(
+    async (qrText) => {
+      if (!qrText) return;
+      const jobId = (whatsappQrJobRef.current += 1);
+      try {
+        const { toDataURL } = await import('qrcode');
+        const dataUrl = await toDataURL(qrText);
+        if (whatsappQrJobRef.current !== jobId) return;
+        updateWhatsappQr(dataUrl);
+      } catch (error) {
+        console.error('Failed to render WhatsApp QR:', error);
+      }
+    },
+    [updateWhatsappQr]
+  );
 
   useEffect(() => {
     if (user) {
@@ -127,9 +151,11 @@ export default function SettingsPage() {
       setWhatsappStatus(derivedStatus);
       setWhatsappConnected(derivedStatus === 'connected');
       if (derivedStatus === 'connected') {
-        setWhatsappQr('');
+        updateWhatsappQr('');
       } else if (payload?.qrImage) {
-        setWhatsappQr(payload.qrImage);
+        updateWhatsappQr(payload.qrImage);
+      } else if (derivedStatus !== 'qr') {
+        updateWhatsappQr('');
       }
     } catch (error) {
       if (isMountedRef.current) {
@@ -162,15 +188,26 @@ export default function SettingsPage() {
       setWhatsappStatus(derivedStatus);
       setWhatsappConnected(derivedStatus === 'connected');
       if (derivedStatus === 'connected') {
-        setWhatsappQr('');
+        updateWhatsappQr('');
       } else if (payload?.qrImage) {
-        setWhatsappQr(payload.qrImage);
+        updateWhatsappQr(payload.qrImage);
+      } else if (derivedStatus !== 'qr') {
+        updateWhatsappQr('');
       }
     });
 
-    socket.on('whatsapp:qr', (qrImage) => {
-      if (qrImage) {
-        setWhatsappQr(qrImage);
+    socket.on('whatsapp:qr', (payload) => {
+      if (!payload) return;
+      if (typeof payload === 'string') {
+        updateWhatsappQr(payload);
+        return;
+      }
+      if (payload?.qrImage) {
+        updateWhatsappQr(payload.qrImage);
+        return;
+      }
+      if (payload?.qr) {
+        renderQrFromRaw(payload.qr);
       }
     });
 
@@ -182,7 +219,7 @@ export default function SettingsPage() {
       isMountedRef.current = false;
       socket.disconnect();
     };
-  }, [fetchWhatsAppStatus, user?.id]);
+  }, [fetchWhatsAppStatus, renderQrFromRaw, updateWhatsappQr, user?.id]);
 
   const handleStartWhatsApp = async () => {
     try {
@@ -575,6 +612,7 @@ export default function SettingsPage() {
                 {!whatsappConnected && whatsappQr && (
                   <div className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-gray-200 rounded-lg bg-white">
                     <img
+                      key={whatsappQrVersion}
                       src={whatsappQr}
                       alt="WhatsApp QR Code"
                       className="w-56 h-56"
