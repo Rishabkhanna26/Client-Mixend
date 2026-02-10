@@ -162,15 +162,21 @@ const fetchAIReply = async ({ aiPrompt, aiBlocklist, userMessage }) => {
   }
 };
 
+const AUTH_DATA_PATH = process.env.WHATSAPP_AUTH_PATH || ".wwebjs_auth";
+const PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH;
+
 const createClient = (adminId) =>
   new Client({
     authStrategy: new LocalAuth({
       clientId: `admin-${adminId}`,
-      dataPath: ".wwebjs_auth",
+      dataPath: AUTH_DATA_PATH,
     }),
     puppeteer: {
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      ...(PUPPETEER_EXECUTABLE_PATH
+        ? { executablePath: PUPPETEER_EXECUTABLE_PATH }
+        : {}),
     },
   });
 

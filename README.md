@@ -12,7 +12,7 @@ Frontend (Next.js) runs on Vercel, backend (Express + WhatsApp Web) runs on a No
 ## Tech Stack
 - **Frontend:** Next.js, React, TailwindCSS
 - **Backend:** Express, Socket.IO, whatsapp-web.js
-- **DB:** MySQL
+- **DB:** Postgres (Supabase)
 
 ## Project Structure
 - `app/` – Next.js frontend (App Router)
@@ -61,9 +61,35 @@ npm run dev
 Frontend runs on `http://localhost:3000`.
 
 ## Deployment Notes
-- **Frontend:** deploy on Vercel (Next.js).
-- **Backend:** deploy on your Node server (supports WhatsApp Web).
-- Ensure `FRONTEND_ORIGIN` / `FRONTEND_ORIGINS` match the deployed frontend URL.
+### Recommended Split Deployment
+**Frontend:** Vercel (Next.js)  
+**Backend:** Render (or any Node host that supports WebSockets + long-running processes)
+
+#### Backend (Render via Docker)
+Files you need (already in repo):
+- `Dockerfile.backend`
+- `.dockerignore`
+
+Render setup (high level):
+- Service type: Web Service (Docker)
+- Dockerfile path: `Dockerfile.backend` (rename to `Dockerfile` if your host requires it)
+- Start command: handled by Docker `CMD` (`npm run backend:start`)
+- Attach a **persistent disk** and mount it at `/var/data`
+- Set env vars:
+  - `DATABASE_URL`
+  - `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` (use your Vercel URL)
+  - `PORT` (Render provides this automatically)
+  - `WHATSAPP_AUTH_PATH=/var/data/wwebjs_auth`
+  - `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium` (if your image provides Chromium here)
+  - Optional: `REDIS_URL`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`
+
+#### Frontend (Vercel)
+- No extra files required.
+- Set env vars in Vercel:
+  - `NEXT_PUBLIC_WHATSAPP_API_BASE=https://<your-backend-domain>`
+  - `NEXT_PUBLIC_WHATSAPP_SOCKET_URL=https://<your-backend-domain>`
+
+Ensure `FRONTEND_ORIGIN` / `FRONTEND_ORIGINS` match the deployed frontend URL.
 
 ## Message Logging
 Every incoming and outgoing WhatsApp message is saved in the `messages` table once the admin session is active.
