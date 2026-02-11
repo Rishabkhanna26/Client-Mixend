@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { getConnection } from '../../../../lib/db';
+import { getConnection } from '../../../../lib/db-helpers';
 import { hashPassword } from '../../../../lib/auth';
 
 export const runtime = 'nodejs';

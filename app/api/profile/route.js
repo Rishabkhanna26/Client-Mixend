@@ -1,7 +1,29 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs/promises';
+import path from 'path';
 import { requireAuth } from '../../../lib/auth-server';
 import { signAuthToken } from '../../../lib/auth';
 import { getAdminById, updateAdminProfile } from '../../../lib/db-helpers';
+
+export const runtime = 'nodejs';
+
+const getSafeFolder = (value) => String(value || '').replace(/\D/g, '');
+
+const getProfilePhotoUrl = async (phone) => {
+  const folderName = getSafeFolder(phone);
+  if (!folderName) return null;
+  const publicDir = path.join(process.cwd(), 'public', folderName);
+  const candidates = ['profile.jpg', 'profile.jpeg', 'profile.png', 'profile.webp'];
+  for (const candidate of candidates) {
+    try {
+      await fs.access(path.join(publicDir, candidate));
+      return `/${folderName}/${candidate}`;
+    } catch (error) {
+      // continue
+    }
+  }
+  return null;
+};
 
 export async function GET() {
   try {
@@ -20,7 +42,14 @@ export async function GET() {
       });
       return response;
     }
-    return NextResponse.json({ success: true, data: admin });
+    const profilePhotoUrl = await getProfilePhotoUrl(admin.phone);
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...admin,
+        profile_photo_url: profilePhotoUrl,
+      },
+    });
   } catch (error) {
     if (error.status === 401) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -63,7 +92,14 @@ export async function PUT(request) {
       profession: admin.profession,
     });
 
-    const response = NextResponse.json({ success: true, data: admin });
+    const profilePhotoUrl = await getProfilePhotoUrl(admin.phone);
+    const response = NextResponse.json({
+      success: true,
+      data: {
+        ...admin,
+        profile_photo_url: profilePhotoUrl,
+      },
+    });
     response.cookies.set({
       name: 'auth_token',
       value: token,

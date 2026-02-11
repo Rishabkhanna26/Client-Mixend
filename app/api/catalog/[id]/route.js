@@ -2,7 +2,9 @@ import { requireAuth } from '../../../../lib/auth-server';
 import { deleteCatalogItem, getCatalogItemById, updateCatalogItem } from '../../../../lib/db-helpers';
 
 const parseId = (value) => {
-  const num = Number(value);
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === undefined || raw === null) return null;
+  const num = Number.parseInt(String(raw).trim(), 10);
   return Number.isFinite(num) ? num : null;
 };
 
@@ -25,7 +27,8 @@ const parseNumber = (value) => {
 export async function GET(request, { params }) {
   try {
     const user = await requireAuth();
-    const itemId = parseId(params?.id);
+    const resolvedParams = await Promise.resolve(params);
+    const itemId = parseId(resolvedParams?.id);
     if (!itemId) {
       return Response.json({ success: false, error: 'Invalid item id.' }, { status: 400 });
     }
@@ -45,7 +48,8 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const user = await requireAuth();
-    const itemId = parseId(params?.id);
+    const resolvedParams = await Promise.resolve(params);
+    const itemId = parseId(resolvedParams?.id);
     if (!itemId) {
       return Response.json({ success: false, error: 'Invalid item id.' }, { status: 400 });
     }
@@ -123,7 +127,8 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const user = await requireAuth();
-    const itemId = parseId(params?.id);
+    const resolvedParams = await Promise.resolve(params);
+    const itemId = parseId(resolvedParams?.id);
     if (!itemId) {
       return Response.json({ success: false, error: 'Invalid item id.' }, { status: 400 });
     }

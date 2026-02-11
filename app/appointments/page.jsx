@@ -1,10 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCalendarCheck, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
+import { faCalendarCheck, faMagnifyingGlass, faListUl, faTableColumns } from '@fortawesome/free-solid-svg-icons';
+import { useAuth } from '../components/auth/AuthProvider.jsx';
+import Card from '../components/common/Card.jsx';
 
 export default function AppointmentsPage() {
+  const { user } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -13,6 +16,29 @@ export default function AppointmentsPage() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [updatingId, setUpdatingId] = useState(null);
+  const [viewMode, setViewMode] = useState('list');
+
+  const label = useMemo(() => {
+    const appointmentProfessions = new Set(['astrology', 'clinic', 'salon', 'gym', 'spa', 'doctor', 'consultant']);
+    const bookingProfessions = new Set([
+      'restaurant',
+      'hotel',
+      'resort',
+      'hostel',
+      'motel',
+      'inn',
+      'lodge',
+      'guesthouse',
+      'cafe',
+      'café',
+    ]);
+    if (!user?.profession) return 'Bookings';
+    if (appointmentProfessions.has(user.profession) && !bookingProfessions.has(user.profession)) {
+      return 'Appointments';
+    }
+    return 'Bookings';
+  }, [user?.profession]);
+  const labelLower = label.toLowerCase();
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -95,12 +121,39 @@ export default function AppointmentsPage() {
     }
   };
 
+  const statusColumns = useMemo(() => {
+    const columns = [
+      { key: 'booked', label: 'Booked' },
+      { key: 'completed', label: 'Completed' },
+      { key: 'cancelled', label: 'Cancelled' },
+    ];
+    if (filterStatus === 'all') {
+      return columns;
+    }
+    return columns.filter((col) => col.key === filterStatus);
+  }, [filterStatus]);
+
+  const appointmentsByStatus = useMemo(() => {
+    const grouped = {};
+    statusColumns.forEach((col) => {
+      grouped[col.key] = [];
+    });
+    appointments.forEach((appt) => {
+      const key = appt.status || 'booked';
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(appt);
+    });
+    return grouped;
+  }, [appointments, statusColumns]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-aa-orange mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading appointments...</p>
+          <p className="text-gray-600">Loading {labelLower}...</p>
         </div>
       </div>
     );
@@ -111,10 +164,10 @@ export default function AppointmentsPage() {
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <FontAwesomeIcon icon={faCalendarCheck} className="text-aa-orange" style={{ fontSize: 32 }} />
-          Appointments
+          {label}
         </h1>
 
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="flex flex-col lg:flex-row gap-3 mb-4 lg:items-end">
           <div className="flex-1 relative">
             <FontAwesomeIcon
               icon={faMagnifyingGlass}
@@ -123,33 +176,62 @@ export default function AppointmentsPage() {
             />
             <input
               type="text"
-              placeholder="Search by name, phone, type..."
+              placeholder={`Search ${labelLower} by name, phone, type...`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
             />
           </div>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="w-full sm:w-auto sm:min-w-[180px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
-          >
-            <option value="all">All Status</option>
-            <option value="booked">Booked</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="w-full sm:w-auto sm:min-w-[180px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
+            >
+              <option value="all">All Status</option>
+              <option value="booked">Booked</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+
+            <div className="inline-flex rounded-full border border-gray-200 bg-white p-1">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold transition ${
+                  viewMode === 'list'
+                    ? 'bg-aa-dark-blue text-white'
+                    : 'text-aa-gray hover:text-aa-dark-blue'
+                }`}
+              >
+                <FontAwesomeIcon icon={faListUl} />
+                List
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('board')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold transition ${
+                  viewMode === 'board'
+                    ? 'bg-aa-dark-blue text-white'
+                    : 'text-aa-gray hover:text-aa-dark-blue'
+                }`}
+              >
+                <FontAwesomeIcon icon={faTableColumns} />
+                Board
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="space-y-3">
-        {appointments.length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 rounded-lg">
-            <FontAwesomeIcon icon={faCalendarCheck} className="mx-auto text-gray-400 mb-2" style={{ fontSize: 48 }} />
-            <p className="text-gray-500">No appointments found</p>
-          </div>
-        ) : (
-          appointments.map((appt) => (
+      {appointments.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg">
+          <FontAwesomeIcon icon={faCalendarCheck} className="mx-auto text-gray-400 mb-2" style={{ fontSize: 48 }} />
+          <p className="text-gray-500">No {labelLower} found</p>
+        </div>
+      ) : viewMode === 'list' ? (
+        <div className="space-y-3">
+          {appointments.map((appt) => (
             <div
               key={appt.id}
               className="bg-white p-4 rounded-lg border border-gray-200 hover:shadow-md transition"
@@ -176,7 +258,7 @@ export default function AppointmentsPage() {
                   </select>
                 </div>
               </div>
-              <p className="text-gray-700 mb-3">{appt.appointment_type || 'Appointment'}</p>
+              <p className="text-gray-700 mb-3">{appt.appointment_type || label.slice(0, -1)}</p>
               <div className="flex flex-wrap gap-3 text-sm">
                 <span className="text-gray-500">
                   Date: {appt.start_time ? new Date(appt.start_time).toLocaleDateString() : '—'}
@@ -186,9 +268,70 @@ export default function AppointmentsPage() {
                 </span>
               </div>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {statusColumns.map((col) => (
+            <Card key={col.key} className="p-4 bg-gray-50/60 border border-gray-200">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-xs uppercase text-aa-gray font-semibold">{col.label}</p>
+                  <p className="text-sm text-aa-gray">{appointmentsByStatus[col.key]?.length || 0} items</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(col.key)}`}>
+                  {col.label}
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {(appointmentsByStatus[col.key] || []).length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-200 bg-white p-4 text-sm text-aa-gray">
+                    No {col.label.toLowerCase()} {labelLower}.
+                  </div>
+                ) : (
+                  appointmentsByStatus[col.key].map((appt) => (
+                    <div key={appt.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-aa-text-dark">{appt.user_name || 'Unknown'}</p>
+                          <p className="text-xs text-aa-gray">{appt.phone || '—'}</p>
+                        </div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(appt.status)}`}>
+                          {String(appt.status || 'booked').replace('_', ' ').toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="mt-3 text-sm text-aa-text-dark">
+                        {appt.appointment_type || label.slice(0, -1)}
+                      </div>
+                      <div className="mt-2 text-xs text-aa-gray">
+                        {appt.start_time ? new Date(appt.start_time).toLocaleDateString() : '—'} •{' '}
+                        {appt.start_time ? new Date(appt.start_time).toLocaleTimeString() : '—'}
+                      </div>
+                      <div className="mt-3">
+                        <label className="block text-xs font-semibold uppercase text-aa-gray mb-1">
+                          Update Status
+                        </label>
+                        <select
+                          value={appt.status || 'booked'}
+                          onChange={(e) => updateStatus(appt.id, e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-aa-orange"
+                          disabled={updatingId === appt.id}
+                          aria-label="Update appointment status"
+                        >
+                          <option value="booked">Booked</option>
+                          <option value="completed">Completed</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {hasMore && (
         <div className="mt-6 flex justify-center">

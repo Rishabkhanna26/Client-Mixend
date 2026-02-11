@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
-import { getConnection } from '../../../../lib/db';
+import { getConnection } from '../../../../lib/db-helpers';
 
 export const runtime = 'nodejs';
 

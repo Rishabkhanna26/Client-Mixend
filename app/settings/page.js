@@ -169,6 +169,7 @@ export default function SettingsPage() {
           profession_request: data.data?.profession_request || '',
           profession_requested_at: data.data?.profession_requested_at || null,
         });
+        setProfilePhotoPreview(data.data?.profile_photo_url || null);
         setProfessionRequest(
           data.data?.profession_request || data.data?.profession || 'astrology'
         );
@@ -584,6 +585,22 @@ export default function SettingsPage() {
                     onClick={async () => {
                       try {
                         setSaveStatus('');
+                        if (profilePhoto) {
+                          const formData = new FormData();
+                          formData.append('photo', profilePhoto);
+                          const photoResponse = await fetch('/api/profile/photo', {
+                            method: 'POST',
+                            body: formData,
+                          });
+                          const photoData = await photoResponse.json().catch(() => ({}));
+                          if (!photoResponse.ok) {
+                            throw new Error(photoData.error || 'Failed to upload photo.');
+                          }
+                          if (photoData?.url) {
+                            setProfilePhotoPreview(photoData.url);
+                          }
+                          setProfilePhoto(null);
+                        }
                         const response = await fetch('/api/profile', {
                           method: 'PUT',
                           headers: { 'Content-Type': 'application/json' },

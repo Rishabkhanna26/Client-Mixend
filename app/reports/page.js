@@ -56,8 +56,8 @@ export default function ReportsPage() {
   })) || [];
 
   const COLORS = ['#FF6B00', '#0A1F44', '#4CAF50', '#FFC107', '#F44336', '#2196F3'];
-  const totalMessages = messageChartData.reduce((sum, item) => sum + item.messages, 0);
-  const totalLeads = leadChartData.reduce((sum, item) => sum + item.value, 0);
+  const totalMessages = Math.max(0, Number(reports?.totalMessages || 0));
+  const totalLeads = Math.max(0, Number(reports?.totalContacts || 0));
   const completedLeads = leadChartData.find(item => item.name.toLowerCase() === 'completed')?.value || 0;
   const conversionRate = totalLeads > 0 ? ((completedLeads / totalLeads) * 100).toFixed(1) : '0.0';
   const rangeLabel = {
@@ -105,7 +105,7 @@ export default function ReportsPage() {
               <h3 className="text-3xl font-bold text-aa-dark-blue">
                 {totalMessages}
               </h3>
-              <p className="text-sm text-aa-gray font-semibold mt-1">{rangeLabel}</p>
+              <p className="text-sm text-aa-gray font-semibold mt-1">All time</p>
             </div>
             <div className="w-12 h-12 bg-aa-orange/10 rounded-lg flex items-center justify-center">
               <FontAwesomeIcon icon={faMessage} className="text-aa-orange" style={{ fontSize: 24 }} />
@@ -162,46 +162,50 @@ export default function ReportsPage() {
         {/* Messages Timeline */}
         <Card>
           <h3 className="text-xl font-bold text-aa-dark-blue mb-4">Messages Timeline</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={messageChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="date" stroke="#64748B" style={{ fontSize: '12px' }} />
-              <YAxis stroke="#64748B" style={{ fontSize: '12px' }} />
-              <Tooltip />
-              <Line 
-                type="monotone" 
-                dataKey="messages" 
-                stroke="#FF6B00" 
-                strokeWidth={3} 
-                dot={{ fill: '#FF6B00', r: 5 }}
-                activeDot={{ r: 7 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <div className="h-[260px] sm:h-[320px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={messageChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" stroke="#64748B" style={{ fontSize: '12px' }} />
+                <YAxis stroke="#64748B" style={{ fontSize: '12px' }} />
+                <Tooltip />
+                <Line 
+                  type="monotone" 
+                  dataKey="messages" 
+                  stroke="#FF6B00" 
+                  strokeWidth={3} 
+                  dot={{ fill: '#FF6B00', r: 5 }}
+                  activeDot={{ r: 7 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </Card>
 
         {/* Leads Distribution */}
         <Card>
           <h3 className="text-xl font-bold text-aa-dark-blue mb-4">Leads by Status</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={leadChartData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                outerRadius={100}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {leadChartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+          <div className="h-[260px] sm:h-[320px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={leadChartData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {leadChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </Card>
       </div>
 

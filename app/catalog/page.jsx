@@ -64,6 +64,7 @@ export default function CatalogPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [form, setForm] = useState(buildEmptyForm());
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const fetchItems = async () => {
     setLoading(true);
@@ -248,25 +249,37 @@ export default function CatalogPage() {
   };
 
   const handleDelete = async (item) => {
-    const confirmed = window.confirm(`Delete "${item.name}"? This cannot be undone.`);
-    if (!confirmed) return;
+    if (!item?.id) {
+      setError('Unable to delete item: missing id.');
+      return;
+    }
+    setDeleteTarget(item);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget?.id) {
+      setDeleteTarget(null);
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      const response = await fetch(`/api/catalog/${item.id}`, {
+      const response = await fetch(`/api/catalog/${deleteTarget.id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
-      const data = await response.json();
-      if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false) {
         throw new Error(data.error || 'Failed to delete item');
       }
       setNotice('Item deleted.');
-      setItems((prev) => prev.filter((entry) => entry.id !== item.id));
+      setItems((prev) => prev.filter((entry) => String(entry.id) !== String(deleteTarget.id)));
+      await fetchItems();
     } catch (err) {
       setError(err.message);
     } finally {
       setSaving(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -311,18 +324,11 @@ export default function CatalogPage() {
         </div>
         <div className="flex flex-wrap gap-3">
           <Button
-            variant="outline"
+            variant="primary"
             icon={<FontAwesomeIcon icon={faPlus} style={{ fontSize: 16 }} />}
             onClick={() => openCreateModal('service')}
           >
-            Add Service
-          </Button>
-          <Button
-            variant="primary"
-            icon={<FontAwesomeIcon icon={faPlus} style={{ fontSize: 16 }} />}
-            onClick={() => openCreateModal('product')}
-          >
-            Add Product
+            Add Product / Service
           </Button>
         </div>
       </div>
@@ -759,6 +765,41 @@ export default function CatalogPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete item?"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-aa-text-dark">
+            Are you sure you want to delete{' '}
+            <span className="font-semibold">{deleteTarget?.name || 'this item'}</span>? This action
+            cannot be undone.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setDeleteTarget(null)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              className="flex-1"
+              onClick={confirmDelete}
+              disabled={saving}
+            >
+              {saving ? 'Deleting...' : 'Yes, delete'}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

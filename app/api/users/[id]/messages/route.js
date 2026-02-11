@@ -1,4 +1,4 @@
-import { addMessage, getMessagesForUser, getUserById } from '../../../../../lib/db-helpers';
+import { addMessage, deleteMessagesOlderThan, getMessagesForUser, getUserById } from '../../../../../lib/db-helpers';
 import { parsePagination } from '../../../../../lib/api-utils';
 import { requireAuth } from '../../../../../lib/auth-server';
 
@@ -7,6 +7,7 @@ export const runtime = 'nodejs';
 export async function GET(req, context) {
   try {
     const authUser = await requireAuth();
+    await deleteMessagesOlderThan(15);
     const { searchParams } = new URL(req.url);
     const { limit, offset } = parsePagination(searchParams, { defaultLimit: 50, maxLimit: 200 });
     const beforeRaw = searchParams.get('before');

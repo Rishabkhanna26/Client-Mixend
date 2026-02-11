@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '../../../../lib/auth-server';
-import { getConnection } from '../../../../lib/db';
+import { getConnection } from '../../../../lib/db-helpers';
 import { hashPassword, verifyPassword } from '../../../../lib/auth';
 
 export async function POST(request) {
