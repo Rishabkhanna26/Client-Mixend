@@ -98,11 +98,11 @@ export default function SettingsPage() {
     const initialAccent = storedAccent || DEFAULT_ACCENT_COLOR;
     setAccentColor(initialAccent);
     applyAccentColor(initialAccent);
-    const storedTheme = getStoredTheme();
+    const storedTheme = getStoredTheme(user?.id);
     const initialTheme = THEMES.includes(storedTheme) ? storedTheme : DEFAULT_THEME;
     setTheme(initialTheme);
     applyTheme(initialTheme);
-  }, []);
+  }, [user?.id]);
 
   const handleAccentChange = (color) => {
     setAccentColor(color);
@@ -114,7 +114,7 @@ export default function SettingsPage() {
     const resolved = nextTheme === 'dark' ? 'dark' : 'light';
     setTheme(resolved);
     applyTheme(resolved);
-    storeTheme(resolved);
+    storeTheme(resolved, user?.id);
   };
 
   const renderQrFromRaw = useCallback(

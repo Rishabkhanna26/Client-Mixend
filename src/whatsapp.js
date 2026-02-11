@@ -74,6 +74,8 @@ const DUPLICATE_WINDOW_MS = Number(process.env.WHATSAPP_DUP_WINDOW_MS || 10_000)
 const recentMessageIds = new Map();
 const ADMIN_PROFILE_TTL_MS = Number(process.env.ADMIN_PROFILE_TTL_MS || 60_000);
 const adminProfileCache = new Map();
+const ADMIN_CATALOG_TTL_MS = Number(process.env.ADMIN_CATALOG_TTL_MS || 60_000);
+const adminCatalogCache = new Map();
 
 const getMessageKey = (message) => {
   const serialized = message?.id?._serialized || message?.id?.id;
@@ -143,6 +145,203 @@ const getAdminAutomationProfile = async (adminId) => {
   const data = rows[0] || { profession: DEFAULT_PROFESSION };
   adminProfileCache.set(adminId, { at: now, data });
   return data;
+};
+
+const MAIN_MENU_KEYWORDS = ["menu", "main menu", "back", "home", "मुख्य मेनू", "मेनू"];
+const EXECUTIVE_KEYWORDS = [
+  "executive",
+  "agent",
+  "human",
+  "call",
+  "talk",
+  "support",
+  "baat",
+  "help",
+];
+
+const parseCatalogKeywords = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry || "").trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/[,;\n]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const buildOptionKeywords = (item) => {
+  const keywords = new Set();
+  parseCatalogKeywords(item.keywords).forEach((keyword) =>
+    keywords.add(keyword.toLowerCase())
+  );
+  if (item.name) {
+    const name = String(item.name).toLowerCase();
+    keywords.add(name);
+    name
+      .split(/\s+/)
+      .map((word) => word.trim())
+      .filter((word) => word.length > 2)
+      .forEach((word) => keywords.add(word));
+  }
+  if (item.category) {
+    const category = String(item.category).toLowerCase();
+    keywords.add(category);
+  }
+  return Array.from(keywords).filter(Boolean);
+};
+
+const formatMenuLine = (index, item) => {
+  const parts = [`${index}️⃣ ${item.name}`];
+  if (item.price_label) parts.push(`- ${item.price_label}`);
+  if (item.item_type === "service" && item.duration_minutes) {
+    parts.push(`(${item.duration_minutes} min)`);
+  }
+  return parts.join(" ");
+};
+
+const buildCatalogMenuText = ({
+  title,
+  items,
+  footer,
+  includeExecutive = false,
+  execLabel = "Talk to Executive",
+  includeMainMenu = true,
+}) => {
+  const lines = [title];
+  if (!items.length) {
+    lines.push("_No items available right now._");
+  } else {
+    items.forEach((item, idx) => {
+      lines.push(formatMenuLine(idx + 1, item));
+    });
+  }
+
+  let nextIndex = items.length + 1;
+  if (includeExecutive) {
+    lines.push(`${nextIndex}️⃣ ${execLabel}`);
+    nextIndex += 1;
+  }
+  if (includeMainMenu) {
+    lines.push(`${nextIndex}️⃣ Main Menu`);
+  }
+
+  if (footer) {
+    lines.push("");
+    lines.push(footer);
+  }
+  return lines.join("\n");
+};
+
+const getAdminCatalogItems = async (adminId) => {
+  if (!Number.isFinite(adminId)) {
+    return { services: [], products: [], hasCatalog: false };
+  }
+  const cached = adminCatalogCache.get(adminId);
+  const now = Date.now();
+  if (cached && now - cached.at < ADMIN_CATALOG_TTL_MS) {
+    return cached.data;
+  }
+
+  try {
+    const [rows] = await db.query(
+      `SELECT id, item_type, name, category, description, price_label, duration_minutes, details_prompt, keywords, is_active, sort_order, is_bookable
+       FROM admin_catalog_items
+       WHERE admin_id = ?
+       ORDER BY sort_order ASC, name ASC, id ASC`,
+      [adminId]
+    );
+
+    const hasCatalog = rows.length > 0;
+    const active = rows.filter((row) => row.is_active);
+    const services = active.filter((row) => row.item_type === "service");
+    const products = active.filter((row) => row.item_type === "product");
+
+    const data = { services, products, hasCatalog };
+    adminCatalogCache.set(adminId, { at: now, data });
+    return data;
+  } catch (error) {
+    console.error("❌ Failed to load admin catalog:", error.message);
+    const data = { services: [], products: [], hasCatalog: false };
+    adminCatalogCache.set(adminId, { at: now, data });
+    return data;
+  }
+};
+
+const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
+  if (!catalog?.hasCatalog) return baseAutomation;
+
+  const nextAutomation = { ...baseAutomation };
+
+  const serviceLabel = baseAutomation.serviceLabel || "Services";
+  const productLabel = baseAutomation.productLabel || "Products";
+  const execLabel = baseAutomation.execLabel || "Talk to Executive";
+
+  const serviceOptions = [];
+  const serviceItems = catalog.services || [];
+  serviceItems.forEach((item, idx) => {
+    serviceOptions.push({
+      id: `service_${item.id}`,
+      number: String(idx + 1),
+      label: item.name,
+      keywords: buildOptionKeywords(item),
+      prompt: item.details_prompt,
+      bookable: baseAutomation.supportsAppointments ? Boolean(item.is_bookable) : false,
+    });
+  });
+  serviceOptions.push({
+    id: "executive",
+    number: String(serviceItems.length + 1),
+    label: execLabel,
+    keywords: EXECUTIVE_KEYWORDS,
+  });
+  serviceOptions.push({
+    id: "main_menu",
+    number: String(serviceItems.length + 2),
+    label: "Main Menu",
+    keywords: MAIN_MENU_KEYWORDS,
+  });
+
+  const productOptions = [];
+  const productItems = catalog.products || [];
+  productItems.forEach((item, idx) => {
+    productOptions.push({
+      id: `product_${item.id}`,
+      number: String(idx + 1),
+      label: item.name,
+      keywords: buildOptionKeywords(item),
+      prompt: item.details_prompt,
+    });
+  });
+  productOptions.push({
+    id: "main_menu",
+    number: String(productItems.length + 1),
+    label: "Main Menu",
+    keywords: MAIN_MENU_KEYWORDS,
+  });
+
+  nextAutomation.servicesMenuText = buildCatalogMenuText({
+    title: `${serviceLabel}:`,
+    items: serviceItems,
+    footer: "_Reply with a number or type the service name_",
+    includeExecutive: true,
+    execLabel,
+    includeMainMenu: true,
+  });
+  nextAutomation.productsMenuText = buildCatalogMenuText({
+    title: `${productLabel}:`,
+    items: productItems,
+    footer: "_Reply with a number or type the product name_",
+    includeExecutive: false,
+    includeMainMenu: true,
+  });
+  nextAutomation.serviceOptions = serviceOptions;
+  nextAutomation.productOptions = productOptions;
+
+  return nextAutomation;
 };
 
 const buildSystemPrompt = ({ aiPrompt, aiBlocklist }) => {
@@ -1604,7 +1803,9 @@ const sendResumePrompt = async ({ user, sendMessage, automation }) => {
       return;
     }
     case "PRODUCT_REQUIREMENTS":
-      await sendMessage(automation.productDetailsPrompt);
+      await sendMessage(
+        user.data.productDetailsPrompt || automation.productDetailsPrompt
+      );
       return;
     case "PRODUCT_ADDRESS":
       await sendMessage(
@@ -1826,7 +2027,9 @@ function attachAutomationHandlers(session) {
 
     const aiSettings = await getAdminAISettings(assignedAdminId);
     const adminProfile = await getAdminAutomationProfile(assignedAdminId);
-    const automation = getAutomationProfile(adminProfile?.profession);
+    const baseAutomation = getAutomationProfile(adminProfile?.profession);
+    const catalog = await getAdminCatalogItems(assignedAdminId);
+    const automation = buildCatalogAutomation({ baseAutomation, catalog });
     user.data.profession = adminProfile?.profession || DEFAULT_PROFESSION;
     if (aiSettings?.ai_enabled) {
       const aiReply = await fetchAIReply({
@@ -2089,9 +2292,12 @@ function attachAutomationHandlers(session) {
           });
           return;
         }
-        if (matchedService && matchedService.id !== "main_menu" && matchedService.prompt) {
+        if (matchedService && matchedService.id !== "main_menu") {
           user.data.serviceType = matchedService.label;
-          await sendMessage(matchedService.prompt);
+          await sendMessage(
+            matchedService.prompt ||
+              "Please share your service details (DOB, time, place, and concern)."
+          );
           user.step = "SERVICE_DETAILS";
           return;
         }
@@ -2103,7 +2309,9 @@ function attachAutomationHandlers(session) {
         user.data.reason = "Products";
         if (matchedProduct && matchedProduct.id !== "main_menu") {
           user.data.productType = matchedProduct.label;
-          await sendMessage(automation.productDetailsPrompt);
+          user.data.productDetailsPrompt =
+            matchedProduct.prompt || automation.productDetailsPrompt;
+          await sendMessage(user.data.productDetailsPrompt);
           user.step = "PRODUCT_REQUIREMENTS";
           return;
         }
@@ -2191,7 +2399,9 @@ function attachAutomationHandlers(session) {
       }
       if (mainChoice === "PRODUCTS" && matchedProduct && matchedProduct.id !== "main_menu") {
         user.data.productType = matchedProduct.label;
-        await sendMessage(automation.productDetailsPrompt);
+        user.data.productDetailsPrompt =
+          matchedProduct.prompt || automation.productDetailsPrompt;
+        await sendMessage(user.data.productDetailsPrompt);
         user.step = "PRODUCT_REQUIREMENTS";
         return;
       }
@@ -2288,7 +2498,10 @@ function attachAutomationHandlers(session) {
       user.data.serviceType = selectedService.label;
 
       await delay(1000);
-      await sendMessage(selectedService.prompt);
+      await sendMessage(
+        selectedService.prompt ||
+          "Please share your service details (DOB, time, place, and concern)."
+      );
       user.step = "SERVICE_DETAILS";
       return;
     }
@@ -2314,7 +2527,9 @@ function attachAutomationHandlers(session) {
       user.data.productType = selectedProduct.label;
 
       await delay(1000);
-      await sendMessage(automation.productDetailsPrompt);
+      user.data.productDetailsPrompt =
+        selectedProduct.prompt || automation.productDetailsPrompt;
+      await sendMessage(user.data.productDetailsPrompt);
       user.step = "PRODUCT_REQUIREMENTS";
       return;
     }

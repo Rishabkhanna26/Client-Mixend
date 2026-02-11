@@ -28,9 +28,9 @@ export default function MainLayout({ children }) {
   useEffect(() => {
     const storedAccent = getStoredAccentColor();
     applyAccentColor(storedAccent || DEFAULT_ACCENT_COLOR);
-    const storedTheme = getStoredTheme();
+    const storedTheme = getStoredTheme(user?.id);
     applyTheme(storedTheme || DEFAULT_THEME);
-  }, []);
+  }, [user?.id]);
 
   const isPublic = PUBLIC_PATHS.includes(pathname);
 

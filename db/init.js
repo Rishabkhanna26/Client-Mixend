@@ -322,6 +322,29 @@ export async function initDatabase() {
       `CREATE INDEX IF NOT EXISTS message_templates_category_idx ON message_templates (category)`,
       `CREATE INDEX IF NOT EXISTS message_templates_created_by_idx ON message_templates (created_by)`,
       `CREATE INDEX IF NOT EXISTS message_templates_created_idx ON message_templates (created_at)`,
+
+      `
+      CREATE TABLE IF NOT EXISTS admin_catalog_items (
+        id SERIAL PRIMARY KEY,
+        admin_id INT NOT NULL REFERENCES admin_accounts(id) ON DELETE CASCADE,
+        item_type VARCHAR(20) NOT NULL CHECK (item_type IN ('service', 'product')),
+        name VARCHAR(150) NOT NULL,
+        category VARCHAR(100),
+        description TEXT,
+        price_label VARCHAR(60),
+        duration_minutes INT,
+        details_prompt TEXT,
+        keywords TEXT,
+        is_active BOOLEAN DEFAULT TRUE,
+        sort_order INT DEFAULT 0,
+        is_bookable BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+      `,
+      `CREATE INDEX IF NOT EXISTS admin_catalog_items_admin_idx ON admin_catalog_items (admin_id)`,
+      `CREATE INDEX IF NOT EXISTS admin_catalog_items_admin_type_idx ON admin_catalog_items (admin_id, item_type)`,
+      `CREATE INDEX IF NOT EXISTS admin_catalog_items_admin_active_idx ON admin_catalog_items (admin_id, is_active)`,
     ];
 
     for (const sql of tableQueries) {
