@@ -31,7 +31,7 @@ export default function Input({
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className={`w-full px-4 py-3 border-2 rounded-lg outline-none focus:border-aa-orange ${
+          className={`w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 rounded-lg outline-none focus:border-aa-orange ${
             error ? 'border-red-500' : 'border-gray-200'
           } ${hasLeftIcon ? 'pl-10' : ''} ${hasRightElement ? 'pr-12' : ''}`}
           data-testid="input-field"

@@ -22,7 +22,7 @@ export default function Navbar({ onMenuClick }) {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [whatsappConnected, setWhatsappConnected] = useState(false);
-  const [notifications, setNotifications] = useState(3);
+  const [orderNotifications, setOrderNotifications] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const handleLogout = async () => {
     await logout();
@@ -76,6 +76,39 @@ export default function Navbar({ onMenuClick }) {
     return () => {
       isMounted = false;
       socket.disconnect();
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let mounted = true;
+    const ordersKey = `aa_orders_last_seen_${user.id}`;
+
+    const fetchOrderNotifications = async () => {
+      try {
+        const since =
+          typeof window !== 'undefined' && localStorage.getItem(ordersKey)
+            ? localStorage.getItem(ordersKey)
+            : '1970-01-01T00:00:00.000Z';
+        const response = await fetch(`/api/orders/count?since=${encodeURIComponent(since)}`, {
+          credentials: 'include',
+        });
+        const data = await response.json();
+        if (!mounted) return;
+        setOrderNotifications(Math.max(0, Number(data?.count || 0)));
+      } catch (error) {
+        if (mounted) setOrderNotifications(0);
+      }
+    };
+
+    fetchOrderNotifications();
+    const handler = () => fetchOrderNotifications();
+    window.addEventListener('aa-badge-refresh', handler);
+    const timer = setInterval(fetchOrderNotifications, 30000);
+    return () => {
+      mounted = false;
+      window.removeEventListener('aa-badge-refresh', handler);
+      clearInterval(timer);
     };
   }, [user?.id]);
 
@@ -133,9 +166,9 @@ export default function Navbar({ onMenuClick }) {
         {/* Notifications */}
         <button className="relative p-2 hover:bg-gray-100 rounded-lg" data-testid="notification-btn">
           <FontAwesomeIcon icon={faBell} className="text-aa-gray" style={{ fontSize: 22 }} />
-          {notifications > 0 && (
+          {orderNotifications > 0 && (
             <span className="absolute top-0 right-0 w-5 h-5 bg-aa-orange text-white text-xs flex items-center justify-center rounded-full">
-              {notifications}
+              {orderNotifications}
             </span>
           )}
         </button>

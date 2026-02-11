@@ -68,9 +68,9 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <FontAwesomeIcon icon={faEnvelope} className="text-aa-orange" style={{ fontSize: 32 }} />
           Inbox
         </h1>
@@ -103,8 +103,8 @@ export default function InboxPage() {
               key={msg.id}
               className="bg-white p-4 rounded-lg border border-gray-200 hover:shadow-md transition cursor-pointer"
             >
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-gray-900">{msg.user_name} ({msg.phone})</h3>
                   <p className="text-sm text-gray-600 mt-1">{msg.message_text}</p>
                 </div>
@@ -118,7 +118,7 @@ export default function InboxPage() {
                   {msg.message_type}
                 </span>
               </div>
-              <div className="flex justify-between items-center mt-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mt-2">
                 <span className="text-xs text-gray-500">
                   {new Date(msg.created_at).toLocaleDateString()} {new Date(msg.created_at).toLocaleTimeString()}
                 </span>

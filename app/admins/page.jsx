@@ -97,15 +97,15 @@ export default function AdminsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Admins</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Admins</h1>
           <p className="text-gray-600 mt-1">Manage admin access and roles</p>
         </div>
         <button
           onClick={fetchAdmins}
-          className="px-4 py-2 rounded-full border border-aa-orange text-aa-orange font-semibold hover:bg-aa-orange hover:text-white transition"
+          className="px-4 py-2 rounded-full border border-aa-orange text-aa-orange font-semibold hover:bg-aa-orange hover:text-white transition w-full sm:w-auto self-start"
         >
           Refresh
         </button>
@@ -139,7 +139,7 @@ export default function AdminsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[900px]">
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="text-left py-3 px-3 text-sm font-semibold text-gray-500 uppercase">Admin</th>

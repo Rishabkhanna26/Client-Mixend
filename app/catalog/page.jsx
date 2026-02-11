@@ -306,7 +306,7 @@ export default function CatalogPage() {
     <div className="space-y-6" data-testid="catalog-page">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-aa-dark-blue mb-2">Products & Services</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-aa-dark-blue mb-2">Products & Services</h1>
           <p className="text-aa-gray">Manage what WhatsApp users see when they ask about offerings.</p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -417,7 +417,7 @@ export default function CatalogPage() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-4">
           {filteredItems.length === 0 ? (
-            <Card className="p-6 text-center">
+            <Card className="p-4 sm:p-6 text-center">
               <div className="w-14 h-14 bg-aa-orange/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <FontAwesomeIcon icon={faBoxOpen} className="text-aa-orange" style={{ fontSize: 22 }} />
               </div>
@@ -552,133 +552,205 @@ export default function CatalogPage() {
         isOpen={showModal}
         onClose={() => setShowModal(false)}
         title={editingItem ? 'Edit Item' : 'Add New Item'}
-        size="lg"
+        size="xl"
       >
-        <form className="space-y-4" onSubmit={handleSave}>
-          <div>
-            <label className="block text-sm font-semibold text-aa-text-dark mb-2">Item Type</label>
-            <select
-              value={form.item_type}
-              onChange={(event) =>
-                setForm((prev) => ({
-                  ...prev,
-                  item_type: event.target.value,
-                  details_prompt:
-                    event.target.value === 'service'
-                      ? DEFAULT_SERVICE_PROMPT
-                      : DEFAULT_PRODUCT_PROMPT,
-                }))
-              }
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
-              disabled={Boolean(editingItem)}
-              required
-            >
-              <option value="service">Service</option>
-              <option value="product">Product</option>
-            </select>
-          </div>
+        <form className="space-y-6" onSubmit={handleSave}>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-8 space-y-6">
+              <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-aa-gray">Item type</p>
+                    <p className="text-lg font-semibold text-aa-text-dark">
+                      Choose how this appears in WhatsApp
+                    </p>
+                  </div>
+                  <div className="inline-flex rounded-full border border-gray-200 bg-white p-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          item_type: 'service',
+                          details_prompt: DEFAULT_SERVICE_PROMPT,
+                        }))
+                      }
+                      disabled={Boolean(editingItem)}
+                      className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
+                        form.item_type === 'service'
+                          ? 'bg-aa-dark-blue text-white'
+                          : 'text-aa-gray hover:text-aa-dark-blue'
+                      } ${editingItem ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                      Service
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          item_type: 'product',
+                          details_prompt: DEFAULT_PRODUCT_PROMPT,
+                        }))
+                      }
+                      disabled={Boolean(editingItem)}
+                      className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
+                        form.item_type === 'product'
+                          ? 'bg-aa-dark-blue text-white'
+                          : 'text-aa-gray hover:text-aa-dark-blue'
+                      } ${editingItem ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                      Product
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-          <Input
-            label="Name"
-            value={form.name}
-            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-            placeholder="e.g., Personal Astrology Consultation"
-            required
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Category"
-              value={form.category}
-              onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
-              placeholder="e.g., Consultations"
-            />
-            <Input
-              label="Price Label"
-              value={form.price_label}
-              onChange={(event) => setForm((prev) => ({ ...prev, price_label: event.target.value }))}
-              placeholder="e.g., INR 999 / session"
-            />
-          </div>
-
-          {form.item_type === 'service' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Duration (minutes)"
-                type="number"
-                value={form.duration_minutes}
-                onChange={(event) => setForm((prev) => ({ ...prev, duration_minutes: event.target.value }))}
-                placeholder="e.g., 45"
-              />
-              <div className="flex items-center gap-3 mt-6">
-                <input
-                  id="bookable"
-                  type="checkbox"
-                  checked={form.is_bookable}
-                  onChange={(event) => setForm((prev) => ({ ...prev, is_bookable: event.target.checked }))}
-                  className="h-4 w-4"
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Name"
+                  value={form.name}
+                  onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder="e.g., Personal Astrology Consultation"
+                  required
                 />
-                <label htmlFor="bookable" className="text-sm font-semibold text-aa-text-dark">
-                  Bookable appointment (show slots)
-                </label>
+                <Input
+                  label="Category"
+                  value={form.category}
+                  onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
+                  placeholder="e.g., Consultations"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Price Label"
+                  value={form.price_label}
+                  onChange={(event) => setForm((prev) => ({ ...prev, price_label: event.target.value }))}
+                  placeholder="e.g., INR 999 / session"
+                />
+                {form.item_type === 'service' ? (
+                  <Input
+                    label="Duration (minutes)"
+                    type="number"
+                    value={form.duration_minutes}
+                    onChange={(event) => setForm((prev) => ({ ...prev, duration_minutes: event.target.value }))}
+                    placeholder="e.g., 45"
+                  />
+                ) : (
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-white p-4 text-sm text-aa-gray">
+                    Products do not need duration settings.
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-aa-text-dark mb-2">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-aa-text-dark outline-none focus:border-aa-orange focus:ring-2 focus:ring-aa-orange/20"
+                  rows="3"
+                  placeholder="Short summary for your team"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-aa-text-dark mb-2">WhatsApp Details Prompt</label>
+                <textarea
+                  value={form.details_prompt}
+                  onChange={(event) => setForm((prev) => ({ ...prev, details_prompt: event.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-aa-text-dark outline-none focus:border-aa-orange focus:ring-2 focus:ring-aa-orange/20"
+                  rows="4"
+                  placeholder="What should the bot ask next?"
+                />
+                <p className="text-xs text-aa-gray mt-2">
+                  This text is sent when a user selects this item on WhatsApp.
+                </p>
+              </div>
+
+              <Input
+                label="Keywords (comma separated)"
+                value={form.keywords}
+                onChange={(event) => setForm((prev) => ({ ...prev, keywords: event.target.value }))}
+                placeholder="e.g., kundli, birth chart, horoscope"
+              />
+            </div>
+
+            <div className="lg:col-span-4 space-y-4">
+              <div className="rounded-2xl border border-gray-200 p-4">
+                <p className="text-sm font-semibold text-aa-text-dark">Publishing</p>
+                <p className="text-xs text-aa-gray mt-1">Control visibility and ordering.</p>
+
+                <div className="mt-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-aa-text-dark">Active on WhatsApp</p>
+                    <p className="text-xs text-aa-gray">Visible in the catalog list.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      id="is_active"
+                      type="checkbox"
+                      checked={form.is_active}
+                      onChange={(event) => setForm((prev) => ({ ...prev, is_active: event.target.checked }))}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-aa-orange"></div>
+                  </label>
+                </div>
+
+                {form.item_type === 'service' && (
+                  <div className="mt-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-aa-text-dark">Bookable</p>
+                      <p className="text-xs text-aa-gray">Allow customers to pick slots.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        id="bookable"
+                        type="checkbox"
+                        checked={form.is_bookable}
+                        onChange={(event) => setForm((prev) => ({ ...prev, is_bookable: event.target.checked }))}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-aa-orange"></div>
+                    </label>
+                  </div>
+                )}
+
+                <div className="mt-4">
+                  <Input
+                    label="Sort Order"
+                    type="number"
+                    value={form.sort_order}
+                    onChange={(event) => setForm((prev) => ({ ...prev, sort_order: event.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                <p className="text-sm font-semibold text-aa-text-dark">WhatsApp preview</p>
+                <p className="text-xs text-aa-gray">A quick look at what customers see.</p>
+                <div className="mt-4 space-y-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold text-aa-text-dark truncate">
+                      {form.name || 'Item name'}
+                    </span>
+                    <span className="text-aa-gray">{form.price_label || 'Price label'}</span>
+                  </div>
+                  <p className="text-xs text-aa-gray">Category: {form.category || '—'}</p>
+                  {form.item_type === 'service' && form.duration_minutes && (
+                    <p className="text-xs text-aa-gray">Duration: {form.duration_minutes} min</p>
+                  )}
+                  <p className="text-xs text-aa-gray">
+                    Status: {form.is_active ? 'Active' : 'Hidden'}
+                  </p>
+                </div>
               </div>
             </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-semibold text-aa-text-dark mb-2">Description</label>
-            <textarea
-              value={form.description}
-              onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
-              rows="3"
-              placeholder="Short summary for your team"
-            />
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-aa-text-dark mb-2">WhatsApp Details Prompt</label>
-            <textarea
-              value={form.details_prompt}
-              onChange={(event) => setForm((prev) => ({ ...prev, details_prompt: event.target.value }))}
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
-              rows="3"
-              placeholder="What should the bot ask next?"
-            />
-            <p className="text-xs text-aa-gray mt-2">
-              This text is sent when a user selects this item on WhatsApp.
-            </p>
-          </div>
-
-          <Input
-            label="Keywords (comma separated)"
-            value={form.keywords}
-            onChange={(event) => setForm((prev) => ({ ...prev, keywords: event.target.value }))}
-            placeholder="e.g., kundli, birth chart, horoscope"
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Sort Order"
-              type="number"
-              value={form.sort_order}
-              onChange={(event) => setForm((prev) => ({ ...prev, sort_order: event.target.value }))}
-            />
-            <div className="flex items-center gap-3 mt-6">
-              <input
-                id="is_active"
-                type="checkbox"
-                checked={form.is_active}
-                onChange={(event) => setForm((prev) => ({ ...prev, is_active: event.target.checked }))}
-                className="h-4 w-4"
-              />
-              <label htmlFor="is_active" className="text-sm font-semibold text-aa-text-dark">
-                Active (show on WhatsApp)
-              </label>
-            </div>
-          </div>
-
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-100">
             <Button type="submit" variant="primary" className="flex-1" disabled={saving}>
               {saving ? 'Saving...' : editingItem ? 'Update Item' : 'Create Item'}
             </Button>

@@ -100,15 +100,16 @@ export default function TemplatesPage() {
   return (
     <div className="space-y-6" data-testid="templates-page">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-aa-dark-blue mb-2">Templates</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-aa-dark-blue mb-2">Templates</h1>
           <p className="text-aa-gray">Create and manage message templates</p>
         </div>
         <Button
           variant="primary"
           icon={<FontAwesomeIcon icon={faPlus} style={{ fontSize: 18 }} />}
           onClick={() => setShowCreateModal(true)}
+          className="w-full sm:w-auto"
         >
           Create Template
         </Button>

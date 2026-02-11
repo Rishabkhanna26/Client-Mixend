@@ -95,16 +95,16 @@ export default function DashboardPage() {
 	const recentMessages = messages.slice(0, 5);
 
 	return (
-		<div className="p-6 space-y-6">
+		<div className="p-4 sm:p-6 space-y-6">
 			{/* Header */}
 			<div>
-				<h1 className="text-4xl font-bold text-gray-900">Dashboard</h1>
+				<h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">Dashboard</h1>
 				<p className="text-gray-600 mt-2">Welcome back! Here's your business overview.</p>
 			</div>
 
 			{/* Stats Grid */}
 			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-				<div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
+				<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
 					<div className="flex items-center justify-between">
 						<div>
 							<p className="text-gray-600 text-sm font-medium">Total Users</p>
@@ -114,7 +114,7 @@ export default function DashboardPage() {
 					</div>
 				</div>
 
-				<div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
+				<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
 					<div className="flex items-center justify-between">
 						<div>
 							<p className="text-gray-600 text-sm font-medium">Incoming Messages</p>
@@ -124,7 +124,7 @@ export default function DashboardPage() {
 					</div>
 				</div>
 
-				<div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
+				<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
 					<div className="flex items-center justify-between">
 						<div>
 							<p className="text-gray-600 text-sm font-medium">Active Requirements</p>
@@ -134,7 +134,7 @@ export default function DashboardPage() {
 					</div>
 				</div>
 
-				<div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
+				<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
 					<div className="flex items-center justify-between">
 						<div>
 							<p className="text-gray-600 text-sm font-medium">Open Needs</p>
@@ -147,7 +147,7 @@ export default function DashboardPage() {
 
 			{/* Charts Row */}
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-				<div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+				<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm">
 					<h2 className="text-xl font-bold text-gray-900 mb-4">Overview</h2>
 					<ResponsiveContainer width="100%" height={300}>
 						<BarChart data={chartData}>
@@ -160,7 +160,7 @@ export default function DashboardPage() {
 					</ResponsiveContainer>
 				</div>
 
-				<div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+				<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm">
 					<h2 className="text-xl font-bold text-gray-900 mb-4">Growth Trend</h2>
 					<ResponsiveContainer width="100%" height={300}>
 						<LineChart data={chartData}>
@@ -175,7 +175,7 @@ export default function DashboardPage() {
 			</div>
 
 			{/* Recent Activity */}
-			<div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+			<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm">
 				<h2 className="text-xl font-bold text-gray-900 mb-4">Recent Messages</h2>
 				<div className="space-y-3">
 					{recentMessages.length === 0 ? (
@@ -203,7 +203,7 @@ export default function DashboardPage() {
 			</div>
 
 			{/* AI Reply Controls */}
-			<div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+			<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm">
 				<h2 className="text-xl font-bold text-gray-900 mb-2">WhatsApp AI Replies</h2>
 				<p className="text-gray-600 mb-6">
 					Control what the AI is allowed to say. These rules apply to WhatsApp auto-replies.
@@ -255,7 +255,7 @@ export default function DashboardPage() {
 						/>
 					</div>
 				</div>
-				<div className="flex items-center gap-3">
+				<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
 					<button
 						onClick={saveAiSettings}
 						disabled={aiSaving}

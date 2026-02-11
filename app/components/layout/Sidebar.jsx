@@ -1,4 +1,5 @@
 'use client';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -15,6 +16,7 @@ import {
   faGear,
   faCalendarCheck,
   faBoxOpen,
+  faCartShopping,
   faChevronLeft,
   faChevronRight,
   faXmark,
@@ -25,16 +27,53 @@ import { filterMenuItems } from '../../../lib/access.js';
 export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClose }) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [inboxCount, setInboxCount] = useState(0);
 
   const appointmentProfessions = new Set(['astrology', 'clinic', 'restaurant', 'salon']);
   const showAppointments = appointmentProfessions.has(user?.profession);
+  const orderProfessions = new Set(['shop', 'restaurant']);
+  const showOrders = orderProfessions.has(user?.profession);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let mounted = true;
+    const inboxKey = `aa_inbox_last_seen_${user.id}`;
+
+    const fetchInboxCount = async () => {
+      try {
+        const since =
+          typeof window !== 'undefined' && localStorage.getItem(inboxKey)
+            ? localStorage.getItem(inboxKey)
+            : '1970-01-01T00:00:00.000Z';
+        const response = await fetch(`/api/users/count?since=${encodeURIComponent(since)}`, {
+          credentials: 'include',
+        });
+        const data = await response.json();
+        if (!mounted) return;
+        setInboxCount(Math.max(0, Number(data?.count || 0)));
+      } catch (error) {
+        if (mounted) setInboxCount(0);
+      }
+    };
+
+    fetchInboxCount();
+    const handler = () => fetchInboxCount();
+    window.addEventListener('aa-badge-refresh', handler);
+    const timer = setInterval(fetchInboxCount, 30000);
+    return () => {
+      mounted = false;
+      window.removeEventListener('aa-badge-refresh', handler);
+      clearInterval(timer);
+    };
+  }, [user?.id]);
 
   const menuItems = [
     { name: 'Dashboard', icon: faGauge, path: '/dashboard' },
-    { name: 'Inbox', icon: faInbox, path: '/inbox', badge: '12' },
+    { name: 'Inbox', icon: faInbox, path: '/inbox', badge: inboxCount > 0 ? String(inboxCount) : null },
     { name: 'Contacts', icon: faUsers, path: '/contacts' },
     { name: 'Leads', icon: faChartLine, path: '/leads' },
     { name: 'Products & Services', icon: faBoxOpen, path: '/catalog' },
+    ...(showOrders ? [{ name: 'Orders', icon: faCartShopping, path: '/orders' }] : []),
     ...(showAppointments ? [{ name: 'Appointments', icon: faCalendarCheck, path: '/appointments' }] : []),
     { name: 'Reports', icon: faChartBar, path: '/reports' },
     { name: 'Admins', icon: faUserGroup, path: '/admins', roles: ['super_admin'] },
@@ -56,7 +95,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
       data-testid="sidebar"
     >
       {/* Logo */}
-      <div className="p-6 border-b border-white/10 flex items-center justify-between">
+      <div className="p-4 sm:p-6 border-b border-white/10 flex items-center justify-between">
         {showLabels && (
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-aa-orange rounded-lg flex items-center justify-center">

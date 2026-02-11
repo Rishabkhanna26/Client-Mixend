@@ -19,8 +19,8 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' })
         onClick={(e) => e.stopPropagation()}
         data-testid="modal-content"
       >
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-aa-dark-blue">{title}</h2>
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+          <h2 className="text-xl sm:text-2xl font-bold text-aa-dark-blue">{title}</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -29,7 +29,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' })
             ×
           </button>
         </div>
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {children}
         </div>
       </div>

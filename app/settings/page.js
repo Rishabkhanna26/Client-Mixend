@@ -365,42 +365,44 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6" data-testid="settings-page">
       <div>
-        <h1 className="text-3xl font-bold text-aa-dark-blue mb-2">Settings</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-aa-dark-blue mb-2">Settings</h1>
         <p className="text-aa-gray">Manage your account and application preferences</p>
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Tabs Sidebar */}
-        <div className="col-span-3">
+        <div className="col-span-1 lg:col-span-3">
           <Card className="p-2">
-            {tabs.map(tab => {
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left mb-1 ${
-                    activeTab === tab.id
-                      ? 'bg-aa-orange text-white'
-                      : 'text-aa-gray hover:bg-gray-50'
-                  }`}
-                  data-testid={`settings-tab-${tab.id}`}
-                >
-                  <FontAwesomeIcon icon={tab.icon} style={{ fontSize: 18 }} />
-                  <span className="font-semibold">{tab.name}</span>
-                </button>
-              );
-            })}
+            <div className="flex gap-2 overflow-x-auto lg:block">
+              {tabs.map(tab => {
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex-shrink-0 lg:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left whitespace-nowrap lg:whitespace-normal ${
+                      activeTab === tab.id
+                        ? 'bg-aa-orange text-white'
+                        : 'text-aa-gray hover:bg-gray-50'
+                    }`}
+                    data-testid={`settings-tab-${tab.id}`}
+                  >
+                    <FontAwesomeIcon icon={tab.icon} style={{ fontSize: 18 }} />
+                    <span className="font-semibold">{tab.name}</span>
+                  </button>
+                );
+              })}
+            </div>
           </Card>
         </div>
 
         {/* Content Area */}
-        <div className="col-span-9">
+        <div className="col-span-1 lg:col-span-9">
           {/* Profile Settings */}
           {activeTab === 'profile' && (
             <Card>
               <h2 className="text-2xl font-bold text-aa-dark-blue mb-6">Profile Settings</h2>
               <div className="space-y-6">
-                <div className="flex items-center gap-6 pb-6 border-b border-gray-200">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 pb-6 border-b border-gray-200">
                   <div className="w-24 h-24 rounded-full bg-aa-dark-blue flex items-center justify-center overflow-hidden">
                     {profilePhotoPreview ? (
                       <img
@@ -461,7 +463,7 @@ export default function SettingsPage() {
                     Loading profile data...
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input
                       label="Full Name"
                       value={profile.name}
@@ -478,7 +480,7 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Input
                     label="Phone"
                     value={profile.phone}
@@ -699,7 +701,7 @@ export default function SettingsPage() {
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-aa-text-dark mb-3">Theme</label>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <button
                       type="button"
                       onClick={() => handleThemeChange('light')}
@@ -739,7 +741,7 @@ export default function SettingsPage() {
 
                 <div>
                   <label className="block text-sm font-semibold text-aa-text-dark mb-3">Accent Color</label>
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap gap-3">
                     {ACCENT_COLORS.map((color) => {
                       const isActive =
                         accentColor?.toUpperCase() === color.toUpperCase();
@@ -860,11 +862,12 @@ export default function SettingsPage() {
                   disabled
                 />
 
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <Button
                     variant="primary"
                     onClick={handleStartWhatsApp}
                     disabled={whatsappConnected || whatsappStatus === 'starting'}
+                    className="w-full sm:w-auto"
                   >
                     {whatsappConnected
                       ? 'Configured'
@@ -874,7 +877,7 @@ export default function SettingsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="text-red-600 border-red-600 hover:bg-red-50"
+                    className="text-red-600 border-red-600 hover:bg-red-50 w-full sm:w-auto"
                     onClick={handleDisconnectWhatsApp}
                     disabled={!canDisconnect}
                   >
@@ -950,7 +953,7 @@ export default function SettingsPage() {
                       onChange={updatePasswordField('confirm')}
                       disabled={passwordLoading}
                     />
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                       <Button
                         variant="primary"
                         onClick={async () => {
@@ -1001,13 +1004,13 @@ export default function SettingsPage() {
 
                 <div className="pt-6 border-t border-gray-200">
                   <h3 className="font-semibold text-aa-text-dark mb-4">Two-Factor Authentication</h3>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-semibold text-aa-text-dark">Enable 2FA</p>
-                      <p className="text-sm text-aa-gray mt-1">Add an extra layer of security to your account</p>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="font-semibold text-aa-text-dark">Enable 2FA</p>
+                        <p className="text-sm text-aa-gray mt-1">Add an extra layer of security to your account</p>
+                      </div>
+                      <Button variant="outline">Enable</Button>
                     </div>
-                    <Button variant="outline">Enable</Button>
-                  </div>
                 </div>
 
                 <div className="pt-6 border-t border-gray-200">
@@ -1017,7 +1020,7 @@ export default function SettingsPage() {
                       { device: 'Chrome on Windows', location: 'Mumbai, India', time: 'Active now' },
                       { device: 'Safari on iPhone', location: 'Delhi, India', time: '2 hours ago' }
                     ].map((session, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-lg">
+                      <div key={idx} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border-2 border-gray-200 rounded-lg">
                         <div>
                           <p className="font-semibold text-aa-text-dark">{session.device}</p>
                           <p className="text-sm text-aa-gray">{session.location} • {session.time}</p>

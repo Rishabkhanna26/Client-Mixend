@@ -98,8 +98,8 @@ export default function SignupPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h1 className="text-3xl font-bold text-aa-dark-blue mb-2 text-center">Create Account</h1>
+        <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-aa-dark-blue mb-2 text-center">Create Account</h1>
           <p className="text-aa-gray text-center mb-8">Get started with AlgoAura</p>
 
           {error && (

@@ -70,16 +70,16 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6" data-testid="reports-page">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-aa-dark-blue mb-2">Reports & Analytics</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-aa-dark-blue mb-2">Reports & Analytics</h1>
           <p className="text-aa-gray">Track your business performance and insights</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full sm:w-auto">
           <select
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value)}
-            className="px-4 py-2 border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
+            className="w-full sm:w-auto px-4 py-2 border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
           >
             <option value="7days">Last 7 Days</option>
             <option value="30days">Last 30 Days</option>
@@ -89,6 +89,7 @@ export default function ReportsPage() {
           <Button
             variant="outline"
             icon={<FontAwesomeIcon icon={faDownload} style={{ fontSize: 18 }} />}
+            className="w-full sm:w-auto"
           >
             Export Report
           </Button>
@@ -208,7 +209,7 @@ export default function ReportsPage() {
       <Card>
         <h3 className="text-xl font-bold text-aa-dark-blue mb-4">Agent Performance</h3>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[900px]">
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="text-left py-4 px-4 text-sm font-semibold text-aa-gray uppercase">Agent</th>
@@ -261,7 +262,7 @@ export default function ReportsPage() {
               <p className="text-sm text-aa-gray">No campaign data yet.</p>
             ) : (
               (reports?.topCampaigns || []).map((campaign) => (
-                <div key={campaign.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div key={campaign.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-4 bg-gray-50 rounded-lg">
                   <div>
                     <p className="font-semibold text-aa-text-dark">{campaign.title}</p>
                     <p className="text-xs text-aa-gray mt-1">Sent to {campaign.sent_count || 0} contacts</p>
@@ -288,7 +289,7 @@ export default function ReportsPage() {
             ) : (
               (reports?.revenueSources || []).map((item, idx) => (
                 <div key={idx}>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-2">
                     <span className="text-sm font-semibold text-aa-text-dark">{item.source}</span>
                     <span className="text-sm font-bold text-aa-orange">{item.revenue}</span>
                   </div>

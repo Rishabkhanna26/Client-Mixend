@@ -129,15 +129,16 @@ export default function BroadcastPage() {
   return (
     <div className="space-y-6" data-testid="broadcast-page">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-aa-dark-blue mb-2">Broadcast</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-aa-dark-blue mb-2">Broadcast</h1>
           <p className="text-aa-gray">Send messages to multiple contacts at once</p>
         </div>
         <Button
           variant="primary"
           icon={<FontAwesomeIcon icon={faPaperPlane} style={{ fontSize: 18 }} />}
           onClick={() => setShowCreateModal(true)}
+          className="w-full sm:w-auto"
         >
           Create Campaign
         </Button>
@@ -201,7 +202,7 @@ export default function BroadcastPage() {
       <Card>
         <h3 className="text-xl font-bold text-aa-dark-blue mb-4">Campaign History</h3>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[980px]">
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="text-left py-4 px-4 text-sm font-semibold text-aa-gray uppercase">Campaign</th>

@@ -107,14 +107,14 @@ export default function AppointmentsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <FontAwesomeIcon icon={faCalendarCheck} className="text-aa-orange" style={{ fontSize: 32 }} />
           Appointments
         </h1>
 
-        <div className="flex gap-3 mb-4">
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <div className="flex-1 relative">
             <FontAwesomeIcon
               icon={faMagnifyingGlass}
@@ -132,7 +132,7 @@ export default function AppointmentsPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
+            className="w-full sm:w-auto sm:min-w-[180px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
           >
             <option value="all">All Status</option>
             <option value="booked">Booked</option>
@@ -154,12 +154,12 @@ export default function AppointmentsPage() {
               key={appt.id}
               className="bg-white p-4 rounded-lg border border-gray-200 hover:shadow-md transition"
             >
-              <div className="flex justify-between items-start mb-2">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-2">
                 <div>
                   <h3 className="font-bold text-lg text-gray-900">{appt.user_name || 'Unknown'}</h3>
                   <p className="text-sm text-gray-600">{appt.phone || '—'}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(appt.status)}`}>
                     {String(appt.status || 'booked').replace('_', ' ').toUpperCase()}
                   </span>

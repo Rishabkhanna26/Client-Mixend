@@ -215,9 +215,9 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <FontAwesomeIcon icon={faUsers} className="text-aa-orange" style={{ fontSize: 32 }} />
           Contacts
         </h1>
@@ -307,7 +307,7 @@ export default function ContactsPage() {
           <p className="text-aa-gray">No contact selected.</p>
         ) : (
           <div className="space-y-5">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <div className="w-14 h-14 rounded-full bg-aa-orange/10 flex items-center justify-center">
                 <span className="text-lg font-semibold text-aa-orange">
                   {selectedUser.name?.charAt(0) || 'U'}
@@ -355,20 +355,6 @@ export default function ContactsPage() {
                     <p className="font-semibold text-aa-text-dark mb-2">
                       {latestRequirement.requirement_text || '—'}
                     </p>
-                    <div className="flex flex-wrap gap-2 text-sm">
-                      <span className="px-2 py-1 rounded bg-gray-100 text-aa-gray">
-                        Category: {latestRequirement.category || '—'}
-                      </span>
-                      <span className="px-2 py-1 rounded bg-gray-100 text-aa-gray">
-                        Status: {latestRequirement.status || '—'}
-                      </span>
-                      <span className="px-2 py-1 rounded bg-gray-100 text-aa-gray">
-                        Date:{' '}
-                        {latestRequirement.created_at
-                          ? new Date(latestRequirement.created_at).toLocaleString()
-                          : '—'}
-                      </span>
-                    </div>
                   </div>
                 </div>
               )}
@@ -387,7 +373,7 @@ export default function ContactsPage() {
           <p className="text-aa-gray">No contact selected.</p>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-aa-orange/10 flex items-center justify-center">
                   <span className="text-lg font-semibold text-aa-orange">

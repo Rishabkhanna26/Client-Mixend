@@ -46,6 +46,30 @@ export default function MainLayout({ children }) {
     }
   }, [isPublic, loading, user, pathname, router]);
 
+  useEffect(() => {
+    if (isPublic) return;
+    if (!user?.id) return;
+    if (typeof window === 'undefined') return;
+    const now = new Date().toISOString();
+    const inboxKey = `aa_inbox_last_seen_${user.id}`;
+    const ordersKey = `aa_orders_last_seen_${user.id}`;
+    let updated = false;
+
+    if (pathname === '/inbox') {
+      localStorage.setItem(inboxKey, now);
+      updated = true;
+    }
+
+    if (pathname === '/orders') {
+      localStorage.setItem(ordersKey, now);
+      updated = true;
+    }
+
+    if (updated) {
+      window.dispatchEvent(new Event('aa-badge-refresh'));
+    }
+  }, [isPublic, pathname, user?.id]);
+
   // Login/signup pages should NOT show sidebar/navbar
   if (isPublic) {
     return <>{children}</>;
