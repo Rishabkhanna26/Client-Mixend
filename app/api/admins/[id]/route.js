@@ -1,5 +1,5 @@
 import { requireAuth } from '../../../../lib/auth-server';
-import { updateAdminAccess } from '../../../../lib/db-helpers';
+import { countSuperAdmins, deleteAdminAndData, getAdminById, updateAdminAccess } from '../../../../lib/db-helpers';
 
 export const runtime = 'nodejs';
 
@@ -53,6 +53,47 @@ export async function PATCH(req, context) {
       return Response.json({ success: false, error: 'Admin not found' }, { status: 404 });
     }
     return Response.json({ success: true, data: updated });
+  } catch (error) {
+    if (error.status === 401) {
+      return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    return Response.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req, context) {
+  try {
+    const user = await requireAuth();
+    if (user.admin_tier !== 'super_admin') {
+      return Response.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+    const params = await context.params;
+    const adminId = Number(params?.id);
+    if (!Number.isFinite(adminId)) {
+      return Response.json({ success: false, error: 'Invalid admin id' }, { status: 400 });
+    }
+    if (adminId === user.id) {
+      return Response.json({ success: false, error: 'You cannot delete your own account.' }, { status: 400 });
+    }
+
+    const target = await getAdminById(adminId);
+    if (!target) {
+      return Response.json({ success: false, error: 'Admin not found' }, { status: 404 });
+    }
+
+    if (target.admin_tier === 'super_admin') {
+      const superCount = await countSuperAdmins();
+      if (superCount <= 1) {
+        return Response.json({ success: false, error: 'Cannot delete the last super admin.' }, { status: 400 });
+      }
+    }
+
+    const result = await deleteAdminAndData(adminId);
+    if (!result.ok) {
+      return Response.json({ success: false, error: 'Admin not found' }, { status: 404 });
+    }
+
+    return Response.json({ success: true, data: result.admin });
   } catch (error) {
     if (error.status === 401) {
       return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });

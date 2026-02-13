@@ -113,7 +113,10 @@ export default function Navbar({ onMenuClick }) {
   }, [user?.id]);
 
   return (
-    <nav className="bg-white h-16 border-b border-gray-200 flex items-center justify-between px-4 sm:px-6" data-testid="navbar">
+    <nav
+      className="sticky top-0 z-40 bg-white border-b border-gray-200 flex items-center justify-between px-3 sm:px-4 lg:px-6 py-2 min-h-16"
+      data-testid="navbar"
+    >
       {/* Left: Menu + Search */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <button
@@ -125,7 +128,7 @@ export default function Navbar({ onMenuClick }) {
         >
           <FontAwesomeIcon icon={faBars} className="text-aa-gray" style={{ fontSize: 22 }} />
         </button>
-        <div className="flex-1 max-w-2xl">
+        <div className="hidden sm:block flex-1 max-w-2xl">
           <div className="relative">
             <FontAwesomeIcon
               icon={faMagnifyingGlass}
@@ -145,7 +148,7 @@ export default function Navbar({ onMenuClick }) {
       </div>
 
       {/* Right Side */}
-      <div className="flex items-center gap-3 sm:gap-4 ml-4">
+      <div className="flex items-center gap-2 sm:gap-3 ml-2 sm:ml-4">
         {/* WhatsApp Status */}
         <div 
           className={`hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg ${
@@ -190,6 +193,16 @@ export default function Navbar({ onMenuClick }) {
               <FontAwesomeIcon icon={faRightFromBracket} className="text-aa-gray" style={{ fontSize: 18 }} />
             </button>
           </div>
+        )}
+        {user && (
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 md:hidden"
+            aria-label="Logout"
+          >
+            <FontAwesomeIcon icon={faRightFromBracket} className="text-aa-gray" style={{ fontSize: 18 }} />
+          </button>
         )}
       </div>
     </nav>

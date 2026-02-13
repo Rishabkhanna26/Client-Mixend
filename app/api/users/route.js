@@ -1,4 +1,4 @@
-import { getAllUsers } from '../../../lib/db-helpers';
+import { addUser, getAllUsers, getUserById, getUserByPhone } from '../../../lib/db-helpers';
 import { parsePagination, parseSearch } from '../../../lib/api-utils';
 import { requireAuth } from '../../../lib/auth-server';
 
@@ -26,6 +26,47 @@ export async function GET(req) {
     });
     response.headers.set('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
     return response;
+  } catch (error) {
+    if (error.status === 401) {
+      return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    return Response.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(req) {
+  try {
+    const authUser = await requireAuth();
+    const body = await req.json().catch(() => ({}));
+    const name = String(body?.name || '').trim() || null;
+    const email = String(body?.email || '').trim() || null;
+    const phone = String(body?.phone || '').trim();
+    if (!phone) {
+      return Response.json({ success: false, error: 'Phone is required.' }, { status: 400 });
+    }
+
+    let userId = null;
+    try {
+      userId = await addUser(phone, name, email, authUser.id);
+    } catch (error) {
+      if (error?.code === '23505') {
+        const existing = await getUserByPhone(phone);
+        return Response.json(
+          { success: false, error: 'Contact already exists.', data: existing || null },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
+
+    const created = userId
+      ? await getUserById(userId, authUser.admin_tier === 'super_admin' ? null : authUser.id)
+      : null;
+    if (!created) {
+      return Response.json({ success: false, error: 'Failed to create contact.' }, { status: 500 });
+    }
+
+    return Response.json({ success: true, data: created });
   } catch (error) {
     if (error.status === 401) {
       return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });

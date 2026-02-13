@@ -201,7 +201,7 @@ export default function BroadcastPage() {
       {/* Broadcast History */}
       <Card>
         <h3 className="text-xl font-bold text-aa-dark-blue mb-4">Campaign History</h3>
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full min-w-[980px]">
             <thead>
               <tr className="border-b border-gray-200">
@@ -250,6 +250,62 @@ export default function BroadcastPage() {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="space-y-3 md:hidden">
+          {broadcasts.map((broadcast) => (
+            <div
+              key={broadcast.id}
+              className="rounded-xl border border-gray-200 p-4"
+              data-testid={`broadcast-mobile-${broadcast.id}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-aa-text-dark truncate">{broadcast.title}</p>
+                  <p className="text-xs text-aa-gray mt-1 line-clamp-2">{broadcast.message}</p>
+                </div>
+                <Badge
+                  variant={
+                    broadcast.status === 'sent'
+                      ? 'green'
+                      : broadcast.status === 'scheduled'
+                      ? 'yellow'
+                      : broadcast.status === 'failed'
+                      ? 'red'
+                      : 'default'
+                  }
+                >
+                  {broadcast.status}
+                </Badge>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg bg-gray-50 px-3 py-2">
+                  <p className="text-aa-gray">Sent</p>
+                  <p className="font-semibold text-aa-text-dark">{broadcast.sent_count}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 px-3 py-2">
+                  <p className="text-aa-gray">Delivered</p>
+                  <p className="font-semibold text-aa-text-dark">{broadcast.delivered_count}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 px-3 py-2">
+                  <p className="text-aa-gray">Created by</p>
+                  <p className="font-semibold text-aa-text-dark truncate">
+                    {broadcast.created_by_name || 'System'}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 px-3 py-2">
+                  <p className="text-aa-gray">Date</p>
+                  <p className="font-semibold text-aa-text-dark">
+                    {new Date(broadcast.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3">
+                <button className="text-aa-orange hover:underline text-sm font-semibold">
+                  View Details
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </Card>
 

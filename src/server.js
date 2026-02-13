@@ -8,6 +8,7 @@ import {
   stopWhatsApp,
   getWhatsAppState,
   whatsappEvents,
+  sendAdminMessage,
 } from "./whatsapp.js";
 
 dotenv.config();
@@ -112,6 +113,27 @@ app.post("/whatsapp/disconnect", async (req, res) => {
   } catch (err) {
     console.error("❌ Failed to disconnect WhatsApp:", err);
     res.status(500).json({ error: "Failed to disconnect WhatsApp" });
+  }
+});
+
+app.post("/whatsapp/send", async (req, res) => {
+  try {
+    const adminId = Number(req.body?.adminId);
+    const userId = Number(req.body?.userId);
+    const message = String(req.body?.message || "").trim();
+    const result = await sendAdminMessage({
+      adminId: Number.isFinite(adminId) ? adminId : undefined,
+      userId: Number.isFinite(userId) ? userId : undefined,
+      text: message,
+    });
+    if (result?.error) {
+      res.status(result.status || 400).json({ success: false, error: result.error, code: result.code });
+      return;
+    }
+    res.json({ success: true, data: result?.data || null });
+  } catch (err) {
+    console.error("❌ Failed to send WhatsApp message:", err);
+    res.status(500).json({ success: false, error: "Failed to send WhatsApp message" });
   }
 });
 

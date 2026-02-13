@@ -15,12 +15,17 @@ import {
   faRotateRight,
   faMessage,
   faArrowDown,
+  faArrowLeft,
   faCheckDouble,
 } from '@fortawesome/free-solid-svg-icons';
 import Card from '../components/common/Card.jsx';
 import Button from '../components/common/Button.jsx';
 import Badge from '../components/common/Badge.jsx';
 import Loader from '../components/common/Loader.jsx';
+import { useAuth } from '../components/auth/AuthProvider.jsx';
+
+const WHATSAPP_API_BASE =
+  process.env.NEXT_PUBLIC_WHATSAPP_API_BASE || 'http://localhost:3001';
 
 const RANGE_OPTIONS = {
   '7d': 7,
@@ -75,6 +80,7 @@ const mergeById = (existing, incoming) => {
 };
 
 export default function InboxPage() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -88,10 +94,68 @@ export default function InboxPage() {
     sort: 'recent',
   });
   const [selectedThread, setSelectedThread] = useState(null);
+  const [mobileThreadOpen, setMobileThreadOpen] = useState(false);
   const [threadMap, setThreadMap] = useState({});
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
+  const [whatsappReady, setWhatsappReady] = useState(true);
+  const [whatsappChecked, setWhatsappChecked] = useState(false);
+  const [whatsappStatus, setWhatsappStatus] = useState('idle');
+
+  const statusFilterOptions = [
+    { value: 'all', label: 'All', icon: faFilter },
+    { value: 'unread', label: 'Unread', icon: faEnvelopeOpen },
+    { value: 'read', label: 'Read', icon: faCheckDouble },
+    { value: 'needs_reply', label: 'Needs reply', icon: faBolt },
+  ];
+
+  const typeFilterOptions = [
+    { value: 'all', label: 'All', icon: faMessage },
+    { value: 'incoming', label: 'Incoming', icon: faEnvelopeOpen },
+    { value: 'outgoing', label: 'Outgoing', icon: faPaperPlane },
+  ];
+
+  const rangeFilterOptions = [
+    { value: '7d', label: '7 days' },
+    { value: '30d', label: '30 days' },
+    { value: '90d', label: '90 days' },
+    { value: 'all', label: 'All time' },
+  ];
+
+  const sortFilterOptions = [
+    { value: 'recent', label: 'Most recent' },
+    { value: 'oldest', label: 'Oldest first' },
+    { value: 'unread', label: 'Unread first' },
+  ];
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let mounted = true;
+
+    const fetchStatus = async () => {
+      try {
+        const response = await fetch(`${WHATSAPP_API_BASE}/whatsapp/status?adminId=${user.id}`);
+        const data = await response.json();
+        if (!mounted) return;
+        setWhatsappReady(Boolean(data?.ready));
+        setWhatsappStatus(data?.status || 'idle');
+        setWhatsappChecked(true);
+      } catch (error) {
+        if (!mounted) return;
+        setWhatsappReady(false);
+        setWhatsappStatus('unknown');
+        setWhatsappChecked(true);
+      }
+    };
+
+    fetchStatus();
+    const timer = setInterval(fetchStatus, 20000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -102,11 +166,14 @@ export default function InboxPage() {
 
   useEffect(() => {
     if (!selectedThread) return;
-    const thread = threadMap[selectedThread];
-    if (!thread || (!thread.loading && thread.messages.length === 0)) {
-      loadThreadMessages(selectedThread, { reset: true });
-    }
+    loadThreadMessages(selectedThread, { reset: true });
   }, [selectedThread]);
+
+  const handleSelectThread = (userId) => {
+    if (!userId) return;
+    setSelectedThread(userId);
+    setMobileThreadOpen(true);
+  };
 
   const stats = useMemo(() => {
     const now = Date.now();
@@ -224,11 +291,13 @@ export default function InboxPage() {
   useEffect(() => {
     if (threads.length === 0) {
       setSelectedThread(null);
+      setMobileThreadOpen(false);
       return;
     }
     const exists = threads.some((thread) => thread.user_id === selectedThread);
     if (!exists) {
       setSelectedThread(threads[0].user_id);
+      setMobileThreadOpen(false);
     }
   }, [threads, selectedThread]);
 
@@ -293,10 +362,18 @@ export default function InboxPage() {
       setThreadMap((prev) => {
         const existing = reset ? [] : prev[userId]?.messages || [];
         const merged = mergeById(existing, list);
+        const shouldMarkRead = reset && merged.length > 0;
+        const nextMessages = shouldMarkRead
+          ? merged.map((msg) => {
+              if (msg.message_type !== 'incoming') return msg;
+              if (msg.status === 'read') return msg;
+              return { ...msg, status: 'read' };
+            })
+          : merged;
         return {
           ...prev,
           [userId]: {
-            messages: merged,
+            messages: nextMessages,
             loading: false,
             hasMore: Boolean(data?.meta?.hasMore),
             offset:
@@ -306,6 +383,16 @@ export default function InboxPage() {
           },
         };
       });
+      if (reset && list.length > 0) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.user_id !== userId) return msg;
+            if (msg.message_type !== 'incoming') return msg;
+            if (msg.status === 'read') return msg;
+            return { ...msg, status: 'read' };
+          })
+        );
+      }
     } catch (error) {
       console.error('Failed to load thread messages:', error);
       setThreadMap((prev) => ({
@@ -323,6 +410,10 @@ export default function InboxPage() {
 
   const sendMessage = async () => {
     if (!selectedThread || sending) return;
+    if (whatsappChecked && !whatsappReady) {
+      setSendError('WhatsApp is not connected. Go to Settings > WhatsApp to connect.');
+      return;
+    }
     const text = draft.trim();
     if (!text) return;
     setSending(true);
@@ -335,7 +426,9 @@ export default function InboxPage() {
       });
       const data = await response.json();
       if (!response.ok || data?.success === false) {
-        throw new Error(data?.error || 'Failed to send message');
+        const message = data?.error || 'Failed to send message';
+        setSendError(message);
+        return;
       }
       const newMessage = {
         ...data.data,
@@ -373,8 +466,8 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff3e6_0%,_#ffffff_45%,_#f3f6ff_100%)]">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-6">
+    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_#fff3e6_0%,_#ffffff_45%,_#f3f6ff_100%)]">
+      <div className="w-full px-3 sm:px-4 lg:px-6 py-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
@@ -433,8 +526,8 @@ export default function InboxPage() {
           </Card>
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="space-y-4">
+        <div className="mt-6 grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <div className={`space-y-4 ${mobileThreadOpen ? 'hidden lg:block' : 'block'}`}>
             <Card className="border border-white/60 bg-white/90 backdrop-blur">
               <div className="relative">
                 <FontAwesomeIcon
@@ -449,64 +542,109 @@ export default function InboxPage() {
                   className="w-full rounded-xl border border-gray-200 bg-white px-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-aa-orange"
                 />
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="mt-4 space-y-4">
                 <div>
-                  <label className="text-xs uppercase text-aa-gray">Status</label>
-                  <select
-                    value={filters.status}
-                    onChange={(event) =>
-                      setFilters((prev) => ({ ...prev, status: event.target.value }))
-                    }
-                    className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  >
-                    <option value="all">All</option>
-                    <option value="unread">Unread</option>
-                    <option value="read">Read</option>
-                    <option value="needs_reply">Needs reply</option>
-                  </select>
+                  <p className="text-xs uppercase text-aa-gray">Status</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {statusFilterOptions.map((option) => {
+                      const active = filters.status === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            setFilters((prev) => ({ ...prev, status: option.value }))
+                          }
+                          className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                            active
+                              ? 'bg-aa-dark-blue text-white border-aa-dark-blue'
+                              : 'border-gray-200 text-aa-gray hover:border-aa-orange hover:text-aa-orange'
+                          }`}
+                        >
+                          <span className="flex items-center justify-center gap-2">
+                            <FontAwesomeIcon icon={option.icon} />
+                            {option.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div>
-                  <label className="text-xs uppercase text-aa-gray">Type</label>
-                  <select
-                    value={filters.type}
-                    onChange={(event) =>
-                      setFilters((prev) => ({ ...prev, type: event.target.value }))
-                    }
-                    className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  >
-                    <option value="all">All</option>
-                    <option value="incoming">Incoming</option>
-                    <option value="outgoing">Outgoing</option>
-                  </select>
+                  <p className="text-xs uppercase text-aa-gray">Type</p>
+                  <div className="mt-2 inline-flex flex-wrap gap-2 rounded-full border border-gray-200 bg-white p-1">
+                    {typeFilterOptions.map((option) => {
+                      const active = filters.type === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            setFilters((prev) => ({ ...prev, type: option.value }))
+                          }
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                            active
+                              ? 'bg-aa-orange text-white'
+                              : 'text-aa-gray hover:text-aa-dark-blue'
+                          }`}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <FontAwesomeIcon icon={option.icon} />
+                            {option.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div>
-                  <label className="text-xs uppercase text-aa-gray">Range</label>
-                  <select
-                    value={filters.range}
-                    onChange={(event) =>
-                      setFilters((prev) => ({ ...prev, range: event.target.value }))
-                    }
-                    className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  >
-                    <option value="7d">Last 7 days</option>
-                    <option value="30d">Last 30 days</option>
-                    <option value="90d">Last 90 days</option>
-                    <option value="all">All time</option>
-                  </select>
+                  <p className="text-xs uppercase text-aa-gray">Range</p>
+                  <div className="mt-2 flex flex-wrap gap-3 border-b border-gray-200 pb-1">
+                    {rangeFilterOptions.map((option) => {
+                      const active = filters.range === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            setFilters((prev) => ({ ...prev, range: option.value }))
+                          }
+                          className={`text-xs font-semibold transition ${
+                            active
+                              ? 'border-b-2 border-aa-orange text-aa-orange'
+                              : 'text-aa-gray hover:text-aa-dark-blue'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div>
-                  <label className="text-xs uppercase text-aa-gray">Sort</label>
-                  <select
-                    value={filters.sort}
-                    onChange={(event) =>
-                      setFilters((prev) => ({ ...prev, sort: event.target.value }))
-                    }
-                    className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  >
-                    <option value="recent">Most recent</option>
-                    <option value="oldest">Oldest first</option>
-                    <option value="unread">Unread first</option>
-                  </select>
+                  <p className="text-xs uppercase text-aa-gray">Sort</p>
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    {sortFilterOptions.map((option) => {
+                      const active = filters.sort === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            setFilters((prev) => ({ ...prev, sort: option.value }))
+                          }
+                          className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                            active
+                              ? 'border-aa-orange bg-aa-orange/10 text-aa-dark-blue'
+                              : 'border-gray-200 text-aa-gray hover:border-aa-orange hover:text-aa-orange'
+                          }`}
+                        >
+                          {option.label}
+                          {active && <FontAwesomeIcon icon={faCheckDouble} />}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -545,7 +683,7 @@ export default function InboxPage() {
                 </div>
                 <Badge variant="blue">{threads.length}</Badge>
               </div>
-              <div className="max-h-[520px] overflow-y-auto">
+              <div className="max-h-[68vh] sm:max-h-[56vh] lg:max-h-[calc(100vh-20rem)] overflow-y-auto">
                 {threads.length === 0 ? (
                   <div className="px-4 py-10 text-center text-sm text-aa-gray">
                     No conversations match your filters.
@@ -556,7 +694,7 @@ export default function InboxPage() {
                     return (
                       <button
                         key={thread.user_id}
-                        onClick={() => setSelectedThread(thread.user_id)}
+                        onClick={() => handleSelectThread(thread.user_id)}
                         className={`w-full text-left px-4 py-4 border-b border-gray-100 hover:bg-aa-orange/5 transition ${
                           isActive ? 'bg-aa-orange/10' : ''
                         }`}
@@ -612,7 +750,7 @@ export default function InboxPage() {
             </Card>
           </div>
 
-          <Card className="border border-white/60 bg-white/90 backdrop-blur">
+          <Card className={`border border-white/60 bg-white/90 backdrop-blur ${mobileThreadOpen ? 'block' : 'hidden lg:block'}`}>
             {!selectedThread ? (
               <div className="h-full flex flex-col items-center justify-center text-center py-16">
                 <div className="h-14 w-14 rounded-2xl bg-aa-orange/10 flex items-center justify-center mb-4">
@@ -624,20 +762,28 @@ export default function InboxPage() {
                 </p>
               </div>
             ) : (
-              <div className="flex flex-col h-[720px]">
-                <div className="flex items-center justify-between gap-4 border-b border-gray-100 pb-4">
+              <div className="flex flex-col h-[72vh] min-h-[360px] sm:min-h-[460px] lg:h-[calc(100vh-15.5rem)]">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100 pb-4">
                   <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setMobileThreadOpen(false)}
+                      className="inline-flex lg:hidden h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-aa-gray"
+                      aria-label="Back to conversations"
+                    >
+                      <FontAwesomeIcon icon={faArrowLeft} />
+                    </button>
                     <div className="h-12 w-12 rounded-2xl bg-aa-dark-blue/10 text-aa-dark-blue flex items-center justify-center text-base font-semibold">
                       {getInitials(activeThreadMeta?.user_name, activeThreadMeta?.phone)}
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-aa-text-dark">
+                      <p className="text-lg font-semibold text-aa-text-dark break-words">
                         {activeThreadMeta?.user_name || 'Unknown'}
                       </p>
-                      <p className="text-sm text-aa-gray">{activeThreadMeta?.phone || 'No phone number'}</p>
+                      <p className="text-sm text-aa-gray break-all">{activeThreadMeta?.phone || 'No phone number'}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <a
                       href={activeThreadMeta?.phone ? `tel:${activeThreadMeta.phone}` : undefined}
                       className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-aa-gray hover:border-aa-orange hover:text-aa-orange"
@@ -689,7 +835,7 @@ export default function InboxPage() {
                           return (
                             <div key={msg.id} className={`flex ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
                               <div
-                                className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                                className={`max-w-[88%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
                                   isOutgoing
                                     ? 'bg-aa-dark-blue text-white'
                                     : 'bg-white border border-gray-100 text-aa-text-dark'
@@ -712,6 +858,16 @@ export default function InboxPage() {
                 </div>
 
                 <div className="border-t border-gray-100 pt-4">
+                  {whatsappChecked && !whatsappReady && (
+                    <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      WhatsApp is not connected. Go to Settings &gt; WhatsApp and connect before sending messages.
+                      {whatsappStatus && whatsappStatus !== 'idle' && (
+                        <span className="ml-2 text-xs text-amber-700">
+                          Status: {whatsappStatus}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2 mb-3">
                     {QUICK_REPLIES.map((reply) => (
                       <button
@@ -741,9 +897,9 @@ export default function InboxPage() {
                     <Button
                       variant="primary"
                       onClick={sendMessage}
-                      disabled={sending || !draft.trim()}
+                      disabled={sending || !draft.trim() || (whatsappChecked && !whatsappReady)}
                       icon={<FontAwesomeIcon icon={faPaperPlane} />}
-                      className="self-end"
+                      className="w-full sm:w-auto sm:self-end"
                     >
                       {sending ? 'Sending...' : 'Send'}
                     </Button>

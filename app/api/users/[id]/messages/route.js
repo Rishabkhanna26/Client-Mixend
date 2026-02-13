@@ -1,8 +1,18 @@
-import { addMessage, deleteMessagesOlderThan, getMessagesForUser, getUserById } from '../../../../../lib/db-helpers';
+import {
+  deleteMessagesOlderThan,
+  getMessagesForUser,
+  getUserById,
+  markMessagesRead,
+} from '../../../../../lib/db-helpers';
 import { parsePagination } from '../../../../../lib/api-utils';
 import { requireAuth } from '../../../../../lib/auth-server';
 
 export const runtime = 'nodejs';
+
+const WHATSAPP_API_BASE =
+  process.env.WHATSAPP_API_BASE ||
+  process.env.NEXT_PUBLIC_WHATSAPP_API_BASE ||
+  'http://localhost:3001';
 
 export async function GET(req, context) {
   try {
@@ -18,6 +28,15 @@ export async function GET(req, context) {
     if (!Number.isFinite(userId)) {
       return Response.json({ success: false, error: 'Invalid user id' }, { status: 400 });
     }
+
+    const shouldMarkRead = offset === 0 && !before;
+    if (shouldMarkRead) {
+      await markMessagesRead(
+        userId,
+        authUser.admin_tier === 'super_admin' ? null : authUser.id
+      );
+    }
+
     const messages = await getMessagesForUser(
       userId,
       authUser.admin_tier === 'super_admin' ? null : authUser.id,
@@ -71,17 +90,36 @@ export async function POST(req, context) {
       }
     }
 
-    const messageId = await addMessage(userId, authUser.id, message, 'outgoing');
+    let payload;
+    try {
+      const whatsappResponse = await fetch(`${WHATSAPP_API_BASE}/whatsapp/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminId: authUser.id,
+          userId,
+          message,
+        }),
+      });
+      payload = await whatsappResponse.json().catch(() => null);
+      if (!whatsappResponse.ok || payload?.success === false) {
+        const errorMessage = payload?.error || 'Failed to send message via WhatsApp';
+        return Response.json({ success: false, error: errorMessage }, { status: whatsappResponse.status || 500 });
+      }
+    } catch (error) {
+      return Response.json({ success: false, error: 'WhatsApp service unavailable' }, { status: 502 });
+    }
+
     return Response.json({
       success: true,
       data: {
-        id: messageId,
+        id: payload?.data?.id || payload?.data?.messageId || null,
         user_id: userId,
         admin_id: authUser.id,
         message_text: message,
         message_type: 'outgoing',
-        status: 'sent',
-        created_at: new Date().toISOString(),
+        status: payload?.data?.status || 'sent',
+        created_at: payload?.data?.created_at || new Date().toISOString(),
       },
     });
   } catch (error) {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faUserPen, faRotateRight } from '@fortawesome/free-solid-svg-icons';
+import { faUserPen, faRotateRight, faUserShield, faUserTie, faCircleCheck, faBan } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../components/auth/AuthProvider.jsx';
 import Card from '../components/common/Card.jsx';
 import Button from '../components/common/Button.jsx';
@@ -19,6 +19,7 @@ export default function AdminsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [updatingId, setUpdatingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -136,6 +137,32 @@ export default function AdminsPage() {
     }
   };
 
+  const deleteAdmin = async (admin) => {
+    if (!admin?.id) return;
+    const label = admin.name || admin.email || admin.phone || `Admin #${admin.id}`;
+    const confirmed = window.confirm(
+      `Delete ${label}? This permanently removes the admin and all associated data (contacts, messages, orders, appointments, catalog, broadcasts, templates).`
+    );
+    if (!confirmed) return;
+    setDeletingId(admin.id);
+    setError('');
+    try {
+      const response = await fetch(`/api/admins/${admin.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete admin');
+      }
+      setAdmins((prev) => prev.filter((item) => item.id !== admin.id));
+    } catch (err) {
+      setError(err.message || 'Failed to delete admin');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const filteredAdmins = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return admins;
@@ -153,6 +180,14 @@ export default function AdminsPage() {
     super_admin: 'blue',
     client_admin: 'orange',
   };
+  const roleOptions = [
+    { value: 'super_admin', label: 'Super Admin', icon: faUserShield },
+    { value: 'client_admin', label: 'Admin', icon: faUserTie },
+  ];
+  const statusOptions = [
+    { value: 'active', label: 'Active', icon: faCircleCheck, tone: 'bg-green-50 text-green-700 border-green-200' },
+    { value: 'inactive', label: 'Inactive', icon: faBan, tone: 'bg-gray-100 text-gray-700 border-gray-200' },
+  ];
   const professionOptions = [
     { value: 'astrology', label: 'Astrology' },
     { value: 'clinic', label: 'Clinic' },
@@ -275,6 +310,14 @@ export default function AdminsPage() {
                   {admin.status === 'active' ? 'Deactivate' : 'Activate'}
                 </Button>
               </div>
+              <Button
+                variant="ghost"
+                className="mt-2 w-full text-sm py-2 text-red-700 hover:bg-red-50"
+                onClick={() => deleteAdmin(admin)}
+                disabled={deletingId === admin.id || admin.id === user?.id}
+              >
+                {deletingId === admin.id ? 'Deleting...' : 'Delete Admin'}
+              </Button>
             </Card>
           ))
         )}
@@ -294,41 +337,81 @@ export default function AdminsPage() {
 
           <div>
             <label className="block text-sm font-semibold text-aa-text-dark mb-2">Role</label>
-            <select
-              value={editForm.admin_tier}
-              onChange={handleEditChange('admin_tier')}
-              className="w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
-            >
-              <option value="super_admin">Super Admin</option>
-              <option value="client_admin">Admin</option>
-            </select>
+            <div className="inline-flex flex-wrap items-center gap-2 rounded-full border border-gray-200 bg-white p-1">
+              {roleOptions.map((option) => {
+                const active = editForm.admin_tier === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() =>
+                      setEditForm((prev) => ({ ...prev, admin_tier: option.value }))
+                    }
+                    className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                      active
+                        ? 'bg-aa-dark-blue text-white'
+                        : 'text-aa-gray hover:text-aa-dark-blue'
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <FontAwesomeIcon icon={option.icon} />
+                      {option.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div>
             <label className="block text-sm font-semibold text-aa-text-dark mb-2">Profession</label>
-            <select
-              value={editForm.profession}
-              onChange={handleEditChange('profession')}
-              className="w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
-            >
-              {professionOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {professionOptions.map((option) => {
+                const active = editForm.profession === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() =>
+                      setEditForm((prev) => ({ ...prev, profession: option.value }))
+                    }
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                      active
+                        ? 'border-aa-orange bg-aa-orange/10 text-aa-dark-blue'
+                        : 'border-gray-200 text-aa-gray hover:border-aa-orange hover:text-aa-orange'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div>
             <label className="block text-sm font-semibold text-aa-text-dark mb-2">Status</label>
-            <select
-              value={editForm.status}
-              onChange={handleEditChange('status')}
-              className="w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
+            <div className="grid grid-cols-2 gap-2">
+              {statusOptions.map((option) => {
+                const active = editForm.status === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() =>
+                      setEditForm((prev) => ({ ...prev, status: option.value }))
+                    }
+                    className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                      active
+                        ? option.tone
+                        : 'border-gray-200 text-aa-gray hover:border-aa-orange hover:text-aa-orange'
+                    }`}
+                  >
+                    <span>{option.label}</span>
+                    <FontAwesomeIcon icon={option.icon} />
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {editForm.profession_request && (

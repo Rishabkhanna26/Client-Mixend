@@ -63,12 +63,24 @@ export async function POST(req) {
 
     const appointmentType = String(body?.appointment_type || '').trim();
     const start = new Date(body?.start_time);
-    const end = new Date(body?.end_time);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      return Response.json({ success: false, error: 'Invalid date/time.' }, { status: 400 });
+    const endRaw = body?.end_time;
+    const isSalon = authUser.profession === 'salon';
+    let end = endRaw ? new Date(endRaw) : null;
+    if (Number.isNaN(start.getTime())) {
+      return Response.json({ success: false, error: 'Invalid start time.' }, { status: 400 });
     }
-    if (end <= start) {
-      return Response.json({ success: false, error: 'End time must be after start time.' }, { status: 400 });
+    if (end && Number.isNaN(end.getTime())) {
+      end = null;
+    }
+    if (!isSalon) {
+      if (!end) {
+        return Response.json({ success: false, error: 'End time is required.' }, { status: 400 });
+      }
+      if (end <= start) {
+        return Response.json({ success: false, error: 'End time must be after start time.' }, { status: 400 });
+      }
+    } else if (!end) {
+      end = new Date(start.getTime());
     }
 
     const paymentMethod = String(body?.payment_method || '');

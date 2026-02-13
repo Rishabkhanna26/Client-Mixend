@@ -90,7 +90,7 @@ export default function MainLayout({ children }) {
   const desktopOffset = sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64';
 
   return (
-    <div className="min-h-screen bg-aa-light-bg">
+    <div className="min-h-screen bg-aa-light-bg overflow-x-hidden">
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
@@ -107,7 +107,7 @@ export default function MainLayout({ children }) {
       )}
       <div className={`flex min-h-screen flex-col ${desktopOffset}`}>
         <Navbar onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="flex-1 p-3 sm:p-4 lg:p-6">
           {children}
         </main>
       </div>

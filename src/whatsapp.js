@@ -249,7 +249,7 @@ const getAdminCatalogItems = async (adminId) => {
   try {
     const [rows] = await db.query(
       `SELECT id, item_type, name, category, description, price_label, duration_minutes, details_prompt, keywords, is_active, sort_order, is_bookable
-       FROM services_products
+       FROM catalog_items
        WHERE admin_id = ?
        ORDER BY sort_order ASC, name ASC, id ASC`,
       [adminId]
@@ -477,6 +477,9 @@ const attachClientEvents = (session) => {
     console.log(`✅ WhatsApp Ready (admin ${session.adminId})`);
     updateAdminWhatsAppDetails(session).catch((err) => {
       console.error("❌ Failed to update admin WhatsApp details:", err.message);
+    });
+    recoverPendingMessages(session).catch((err) => {
+      console.error("❌ Failed to recover pending messages:", err.message);
     });
   });
 
@@ -1403,6 +1406,8 @@ const AUTOMATION_PROFILES = {
 const getAutomationProfile = (profession) =>
   AUTOMATION_PROFILES[profession] || AUTOMATION_PROFILES[DEFAULT_PROFESSION];
 
+const ALLOWED_AUTOMATION_PROFESSIONS = new Set(["restaurant", "salon"]);
+
 const textHasAny = (input, keywords) => keywords.some((word) => input.includes(word));
 
 const extractNumber = (input) => {
@@ -1457,6 +1462,10 @@ const DATE_PATTERNS = [
   "d-M-yyyy",
   "d/M",
   "d-M",
+  "M/d/yyyy",
+  "M-d-yyyy",
+  "M/d",
+  "M-d",
   "yyyy-MM-dd",
 ];
 
@@ -1473,6 +1482,26 @@ const DATE_TIME_PATTERNS = [
   "d-M H:mm",
   "yyyy-MM-dd H:mm",
   "yyyy-MM-dd h a",
+  "d/M/yyyy h a",
+  "d-M-yyyy h a",
+  "d/M h a",
+  "d-M h a",
+  "d/M/yyyy h:mm a",
+  "d-M-yyyy h:mm a",
+  "d/M h:mm a",
+  "d-M h:mm a",
+  "M/d/yyyy H:mm",
+  "M-d-yyyy H:mm",
+  "M/d H:mm",
+  "M-d H:mm",
+  "M/d/yyyy h a",
+  "M-d-yyyy h a",
+  "M/d h a",
+  "M-d h a",
+  "M/d/yyyy h:mm a",
+  "M-d-yyyy h:mm a",
+  "M/d h:mm a",
+  "M-d h:mm a",
 ];
 
 const parseWithPatterns = (text, patterns, baseDate) => {
@@ -1516,6 +1545,16 @@ const parseDateTimeFromText = (text) => {
     return setMinutes(setHours(date, time.hour), time.minute);
   }
   return null;
+};
+
+const isPastDate = (date) => {
+  if (!date || !isValid(date)) return false;
+  return isBefore(date, startOfDay(new Date()));
+};
+
+const isPastDateTime = (dateTime) => {
+  if (!dateTime || !isValid(dateTime)) return false;
+  return isBefore(dateTime, new Date());
 };
 
 const withinAppointmentWindow = (date) => {
@@ -1620,10 +1659,9 @@ const bookAppointment = async ({
   }
 
   const hour = slot.getHours();
-  const minute = slot.getMinutes();
-  if (minute !== 0 || hour < APPOINTMENT_START_HOUR || hour >= APPOINTMENT_END_HOUR) {
+  if (hour < APPOINTMENT_START_HOUR || hour >= APPOINTMENT_END_HOUR) {
     await sendMessage(
-      `Available slots are between ${APPOINTMENT_START_HOUR}:00 and ${APPOINTMENT_END_HOUR}:00 with 1-hour gaps.`
+      `Available slots are between ${APPOINTMENT_START_HOUR}:00 and ${APPOINTMENT_END_HOUR}:00.`
     );
     await sendAppointmentTimeOptions({ sendMessage, user, adminId, date: slot });
     user.step = "APPOINTMENT_TIME";
@@ -1695,12 +1733,14 @@ const startAppointmentFlow = async ({ user, sendMessage, appointmentType }) => {
 };
 
 const logMessage = async ({ userId, adminId, text, type }) => {
-  if (!userId || !adminId || !text) return;
-  await db.query(
-    `INSERT INTO contact_messages (user_id, admin_id, message_text, message_type, status)
-     VALUES (?, ?, ?, ?, 'delivered')`,
+  if (!userId || !adminId || !text) return null;
+  const [rows] = await db.query(
+    `INSERT INTO messages (user_id, admin_id, message_text, message_type, status)
+     VALUES (?, ?, ?, ?, 'delivered')
+     RETURNING id, created_at`,
     [userId, adminId, text, type]
   );
+  return rows?.[0] || null;
 };
 
 const logIncomingMessage = async ({ userId, adminId, text }) =>
@@ -1708,7 +1748,65 @@ const logIncomingMessage = async ({ userId, adminId, text }) =>
 
 const sendAndLog = async ({ client, from, userId, adminId, text }) => {
   await client.sendMessage(from, text);
-  await logMessage({ userId, adminId, text, type: "outgoing" });
+  return logMessage({ userId, adminId, text, type: "outgoing" });
+};
+
+export const sendAdminMessage = async ({ adminId, userId, text }) => {
+  if (!Number.isFinite(adminId)) {
+    return { error: "adminId required", code: "admin_required", status: 400 };
+  }
+  if (!Number.isFinite(userId)) {
+    return { error: "userId required", code: "user_required", status: 400 };
+  }
+  const messageText = String(text || "").trim();
+  if (!messageText) {
+    return { error: "Message is required", code: "message_required", status: 400 };
+  }
+  const session = sessions.get(adminId);
+  if (!session || !session.state?.isReady || !session.client) {
+    return { error: "WhatsApp is not connected", code: "whatsapp_not_ready", status: 409 };
+  }
+  touchSession(session);
+
+  const [rows] = await db.query(
+    "SELECT id, phone FROM contacts WHERE id = ? LIMIT 1",
+    [userId]
+  );
+  const user = rows?.[0];
+  if (!user?.phone) {
+    return { error: "Contact phone not found", code: "phone_missing", status: 404 };
+  }
+  const normalized = String(user.phone || "").replace(/[^\d]/g, "");
+  if (!normalized) {
+    return { error: "Contact phone is invalid", code: "phone_invalid", status: 400 };
+  }
+
+  const to = `${normalized}@c.us`;
+  let logEntry = null;
+  try {
+    logEntry = await sendAndLog({
+      client: session.client,
+      from: to,
+      userId,
+      adminId,
+      text: messageText,
+    });
+  } catch (err) {
+    return {
+      error: err?.message || "Failed to send message",
+      code: "send_failed",
+      status: 500,
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      id: logEntry?.id || null,
+      created_at: logEntry?.created_at || new Date().toISOString(),
+      status: "delivered",
+    },
+  };
 };
 
 const promptForName = async ({ user, sendMessage }) => {
@@ -1759,7 +1857,7 @@ const savePartialLead = async ({ user, phone, assignedAdminId }) => {
   const category = user.data.reason ? `Partial - ${user.data.reason}` : "Partial";
 
   await db.query(
-    `INSERT INTO requirements (user_id, requirement_text, category, status)
+    `INSERT INTO leads (user_id, requirement_text, category, status)
      VALUES (?, ?, ?, 'pending')`,
     [user.clientId, summary, category]
   );
@@ -1853,6 +1951,45 @@ const sendResumePrompt = async ({ user, sendMessage, automation }) => {
   }
 };
 
+const normalizeOutgoingText = (value) => String(value || "").toLowerCase().trim();
+
+const inferStepFromOutgoing = (text, automation) => {
+  if (!text) return null;
+  const normalized = normalizeOutgoingText(text);
+
+  if (normalized.includes("continue") && normalized.includes("start again")) {
+    return "RESUME_DECISION";
+  }
+  if (automation?.servicesMenuText && text.trim() === automation.servicesMenuText.trim()) {
+    return "SERVICES_MENU";
+  }
+  if (automation?.productsMenuText && text.trim() === automation.productsMenuText.trim()) {
+    return "PRODUCTS_MENU";
+  }
+  if (automation?.mainMenuText && text.trim() === automation.mainMenuText.trim()) {
+    return "MENU";
+  }
+  if (normalized.includes("please share your service details")) return "SERVICE_DETAILS";
+  if (normalized.includes("full delivery address")) return "PRODUCT_ADDRESS";
+  if (normalized.includes("alternate contact number")) return "PRODUCT_ALT_CONTACT";
+  if (normalized.includes("email address")) return "ASK_EMAIL";
+  if (normalized.includes("may i know") && normalized.includes("name")) return "ASK_NAME";
+  if (normalized.includes("please tell us briefly") || normalized.includes("how we can help")) {
+    return "EXECUTIVE_MESSAGE";
+  }
+  if (normalized.includes("please share a date") || normalized.includes("choose a date")) {
+    return "APPOINTMENT_DATE";
+  }
+  if (normalized.includes("available times") || normalized.includes("select a time")) {
+    return "APPOINTMENT_TIME";
+  }
+  if (normalized.includes("please choose a service")) return "SERVICES_MENU";
+  if (normalized.includes("please choose a product")) return "PRODUCTS_MENU";
+  if (normalized.includes("please reply with 1, 2, or 3")) return "MENU";
+  if (normalized.includes("how can i help you today")) return "MENU";
+  return null;
+};
+
 const finalizeLead = async ({
   user,
   from,
@@ -1886,7 +2023,7 @@ const finalizeLead = async ({
     user.data.serviceType || user.data.productType || user.data.reason || "General";
 
   await db.query(
-    `INSERT INTO requirements (user_id, requirement_text, category, status)
+    `INSERT INTO leads (user_id, requirement_text, category, status)
      VALUES (?, ?, ?, 'pending')`,
     [clientId, requirementText, requirementCategory]
   );
@@ -1909,30 +2046,30 @@ const finalizeLead = async ({
   }
 };
 
-function attachAutomationHandlers(session) {
-  const { client } = session;
-  const users = session.users;
-  if (session.state?.handlersAttached) return;
-  session.state.handlersAttached = true;
+const handleIncomingMessage = async ({
+  session,
+  message,
+  from,
+  text,
+  skipLog = false,
+  skipDuplicateCheck = false,
+  lastOutgoingText = null,
+}) => {
+  try {
+    if (!session.state.isReady) return;
+    if (message && message.fromMe) return;
+    if (!skipDuplicateCheck && message && isDuplicateMessage(message)) return;
+    touchSession(session);
 
-  /* ===============================
-     🔥 AUTOMATION LOGIC
-     =============================== */
-  client.on("message", async (message) => {
-    try {
-      if (!session.state.isReady) return;
-      if (!message || message.fromMe) return;
-      if (isDuplicateMessage(message)) return;
-      touchSession(session);
+    const { client, users } = session;
+    const sender = from || message?.from;
+    if (!sender || sender.endsWith("@g.us")) return;
 
-    const from = message.from;
-    if (!from || from.endsWith("@g.us")) return;
+    const messageText = String(text ?? message?.body ?? "").trim();
+    if (!messageText) return;
 
-    const text = message.body?.trim();
-    if (!text) return;
-
-    const lower = text.toLowerCase();
-    const phone = from.replace("@c.us", "");
+    const lower = messageText.toLowerCase();
+    const phone = sender.replace("@c.us", "");
 
     /* ===============================
        🔍 CHECK USER IN DB
@@ -1961,12 +2098,12 @@ function attachAutomationHandlers(session) {
 
     if (!isReturningUser) {
       try {
-        const [rows] = await db.query(
+        const [createdRows] = await db.query(
           "INSERT INTO contacts (phone, assigned_admin_id) VALUES (?, ?) RETURNING id",
           [phone, assignedAdminId]
         );
         existingUser = {
-          id: rows[0]?.id || null,
+          id: createdRows[0]?.id || null,
           name: null,
           email: null,
           assigned_admin_id: assignedAdminId,
@@ -1990,8 +2127,8 @@ function attachAutomationHandlers(session) {
     /* ===============================
        INIT USER SESSION
        =============================== */
-    if (!users[from]) {
-      users[from] = {
+    if (!session.users[sender]) {
+      session.users[sender] = {
         step: isReturningUser ? "MENU" : "START",
         data: {},
         isReturningUser,
@@ -2009,21 +2146,23 @@ function attachAutomationHandlers(session) {
       };
     }
 
-    const user = users[from];
-    const sendMessage = async (messageText) =>
+    const user = session.users[sender];
+    const sendMessage = async (messageTextToSend) =>
       sendAndLog({
-        client,
-        from,
+        client: session.client,
+        from: sender,
+        userId: user.clientId,
+        adminId: assignedAdminId,
+        text: messageTextToSend,
+      });
+
+    if (!skipLog) {
+      await logIncomingMessage({
         userId: user.clientId,
         adminId: assignedAdminId,
         text: messageText,
       });
-
-    await logIncomingMessage({
-      userId: user.clientId,
-      adminId: assignedAdminId,
-      text,
-    });
+    }
 
     const aiSettings = await getAdminAISettings(assignedAdminId);
     const adminProfile = await getAdminAutomationProfile(assignedAdminId);
@@ -2031,11 +2170,26 @@ function attachAutomationHandlers(session) {
     const catalog = await getAdminCatalogItems(assignedAdminId);
     const automation = buildCatalogAutomation({ baseAutomation, catalog });
     user.data.profession = adminProfile?.profession || DEFAULT_PROFESSION;
+
+    const automationAllowed = ALLOWED_AUTOMATION_PROFESSIONS.has(
+      adminProfile?.profession
+    );
+    if (!automationAllowed) {
+      return;
+    }
+
+    if (lastOutgoingText) {
+      const inferredStep = inferStepFromOutgoing(lastOutgoingText, automation);
+      if (inferredStep && (user.step === "MENU" || user.step === "START")) {
+        user.step = inferredStep;
+      }
+    }
+
     if (aiSettings?.ai_enabled) {
       const aiReply = await fetchAIReply({
         aiPrompt: aiSettings.ai_prompt,
         aiBlocklist: aiSettings.ai_blocklist,
-        userMessage: text,
+        userMessage: messageText,
       });
       if (aiReply) {
         await sendMessage(aiReply);
@@ -2066,7 +2220,7 @@ function attachAutomationHandlers(session) {
         user.greetedThisSession = true;
       }
       user.lastUserMessageAt = now;
-      user.data.lastUserMessage = text;
+      user.data.lastUserMessage = messageText;
       user.partialSavedAt = null;
       scheduleIdleSave({ user, phone, assignedAdminId });
       return;
@@ -2079,7 +2233,7 @@ function attachAutomationHandlers(session) {
     }
 
     user.lastUserMessageAt = now;
-    user.data.lastUserMessage = text;
+    user.data.lastUserMessage = messageText;
     user.partialSavedAt = null;
     scheduleIdleSave({ user, phone, assignedAdminId });
 
@@ -2096,7 +2250,7 @@ function attachAutomationHandlers(session) {
       return;
     }
 
-    if (isMenuCommand(lower, text)) {
+    if (isMenuCommand(lower, messageText)) {
       await delay(1000);
       await sendMessage(
         user.isReturningUser && user.name
@@ -2154,12 +2308,17 @@ function attachAutomationHandlers(session) {
         }
       }
 
-      const directDateTime = parseDateTimeFromText(text);
+      const directDateTime = parseDateTimeFromText(messageText);
       if (directDateTime && isValid(directDateTime)) {
+        if (isPastDateTime(directDateTime)) {
+          await sendMessage("You have selected past date. Please check and tell again.");
+          await sendAppointmentDateOptions({ sendMessage, user });
+          return;
+        }
         await bookAppointment({
           adminId: assignedAdminId,
           user,
-          from,
+          from: sender,
           phone,
           sendMessage,
           slot: directDateTime,
@@ -2170,9 +2329,14 @@ function attachAutomationHandlers(session) {
         return;
       }
 
-      const parsedDate = chosenDate || parseDateFromText(text);
+      const parsedDate = chosenDate || parseDateFromText(messageText);
       if (!parsedDate || !isValid(parsedDate)) {
         await sendMessage("Please share a date or choose an option below.");
+        await sendAppointmentDateOptions({ sendMessage, user });
+        return;
+      }
+      if (isPastDate(parsedDate)) {
+        await sendMessage("You have selected past date. Please check and tell again.");
         await sendAppointmentDateOptions({ sendMessage, user });
         return;
       }
@@ -2212,16 +2376,31 @@ function attachAutomationHandlers(session) {
       }
 
       if (!slot) {
-        const directDateTime = parseDateTimeFromText(text);
+        const directDateTime = parseDateTimeFromText(messageText);
         if (directDateTime && isValid(directDateTime)) {
+          if (isPastDateTime(directDateTime)) {
+            await sendMessage("You have selected past date. Please check and tell again.");
+            if (isBefore(directDateTime, startOfDay(new Date()))) {
+              await sendAppointmentDateOptions({ sendMessage, user });
+              user.step = "APPOINTMENT_DATE";
+            } else {
+              await sendAppointmentTimeOptions({
+                sendMessage,
+                user,
+                adminId: assignedAdminId,
+                date: startOfDay(directDateTime),
+              });
+            }
+            return;
+          }
           slot = directDateTime;
         } else {
-          const time = parseTimeFromText(text);
+          const time = parseTimeFromText(messageText);
           const baseDate = user.data.appointmentDate
             ? new Date(user.data.appointmentDate)
             : null;
           if (time && baseDate && isValid(baseDate)) {
-            slot = setMinutes(setHours(baseDate, time.hour), 0);
+            slot = setMinutes(setHours(baseDate, time.hour), time.minute);
           }
         }
       }
@@ -2230,7 +2409,35 @@ function attachAutomationHandlers(session) {
         await sendMessage("Please select a time from the list or send a time.");
         const baseDate = user.data.appointmentDate
           ? new Date(user.data.appointmentDate)
-          : new Date();
+          : null;
+        if (!baseDate || !isValid(baseDate)) {
+          await sendAppointmentDateOptions({ sendMessage, user });
+          user.step = "APPOINTMENT_DATE";
+          return;
+        }
+        await sendAppointmentTimeOptions({
+          sendMessage,
+          user,
+          adminId: assignedAdminId,
+          date: baseDate,
+        });
+        return;
+      }
+      if (isPastDateTime(slot)) {
+        await sendMessage("You have selected past date. Please check and tell again.");
+        if (isBefore(slot, startOfDay(new Date()))) {
+          await sendAppointmentDateOptions({ sendMessage, user });
+          user.step = "APPOINTMENT_DATE";
+          return;
+        }
+        const baseDate = user.data.appointmentDate
+          ? new Date(user.data.appointmentDate)
+          : startOfDay(slot);
+        if (!baseDate || !isValid(baseDate)) {
+          await sendAppointmentDateOptions({ sendMessage, user });
+          user.step = "APPOINTMENT_DATE";
+          return;
+        }
         await sendAppointmentTimeOptions({
           sendMessage,
           user,
@@ -2243,7 +2450,7 @@ function attachAutomationHandlers(session) {
       await bookAppointment({
         adminId: assignedAdminId,
         user,
-        from,
+        from: sender,
         phone,
         sendMessage,
         slot,
@@ -2424,12 +2631,12 @@ function attachAutomationHandlers(session) {
        STEP 3: NAME
        =============================== */
     if (user.step === "ASK_NAME") {
-      user.data.name = text;
-      user.name = text;
+      user.data.name = messageText;
+      user.name = messageText;
 
       await maybeFinalizeLead({
         user,
-        from,
+        from: sender,
         phone,
         assignedAdminId,
         client,
@@ -2443,12 +2650,12 @@ function attachAutomationHandlers(session) {
        STEP 4: EMAIL
        =============================== */
     if (user.step === "ASK_EMAIL") {
-      user.data.email = text;
-      user.email = text;
+      user.data.email = messageText;
+      user.email = messageText;
 
       await maybeFinalizeLead({
         user,
-        from,
+        from: sender,
         phone,
         assignedAdminId,
         client,
@@ -2538,12 +2745,12 @@ function attachAutomationHandlers(session) {
        STEP 5: SERVICE DETAILS
        =============================== */
     if (user.step === "SERVICE_DETAILS") {
-      user.data.serviceDetails = text;
+      user.data.serviceDetails = messageText;
       user.data.message = buildRequirementSummary({ user, phone });
 
       await maybeFinalizeLead({
         user,
-        from,
+        from: sender,
         phone,
         assignedAdminId,
         client,
@@ -2557,7 +2764,7 @@ function attachAutomationHandlers(session) {
        STEP 6: PRODUCT REQUIREMENTS
        =============================== */
     if (user.step === "PRODUCT_REQUIREMENTS") {
-      user.data.productDetails = text;
+      user.data.productDetails = messageText;
 
       await delay(1000);
       await sendMessage(
@@ -2571,7 +2778,7 @@ function attachAutomationHandlers(session) {
        STEP 7: PRODUCT ADDRESS
        =============================== */
     if (user.step === "PRODUCT_ADDRESS") {
-      user.data.address = text;
+      user.data.address = messageText;
 
       await delay(1000);
       await sendMessage("Alternate contact number (optional). If none, reply *NA*.");
@@ -2583,12 +2790,12 @@ function attachAutomationHandlers(session) {
        STEP 8: PRODUCT ALT CONTACT
        =============================== */
     if (user.step === "PRODUCT_ALT_CONTACT") {
-      user.data.altContact = text;
+      user.data.altContact = messageText;
       user.data.message = buildRequirementSummary({ user, phone });
 
       await maybeFinalizeLead({
         user,
-        from,
+        from: sender,
         phone,
         assignedAdminId,
         client,
@@ -2602,12 +2809,12 @@ function attachAutomationHandlers(session) {
        STEP 9: EXECUTIVE MESSAGE
        =============================== */
     if (user.step === "EXECUTIVE_MESSAGE") {
-      user.data.executiveMessage = text;
+      user.data.executiveMessage = messageText;
       user.data.message = buildRequirementSummary({ user, phone });
 
       await maybeFinalizeLead({
         user,
-        from,
+        from: sender,
         phone,
         assignedAdminId,
         client,
@@ -2617,9 +2824,93 @@ function attachAutomationHandlers(session) {
       return;
     }
   } catch (err) {
-      console.error("❌ Automation error:", err);
-    }
+    console.error("❌ Automation error:", err);
+  }
+};
+
+function attachAutomationHandlers(session) {
+  const { client } = session;
+  if (session.state?.handlersAttached) return;
+  session.state.handlersAttached = true;
+
+  /* ===============================
+     🔥 AUTOMATION LOGIC
+     =============================== */
+  client.on("message", async (message) => {
+    await handleIncomingMessage({ session, message });
   });
+}
+
+const RECOVERY_WINDOW_HOURS = Number(process.env.WHATSAPP_RECOVERY_WINDOW_HOURS || 24);
+const RECOVERY_BATCH_LIMIT = Number(process.env.WHATSAPP_RECOVERY_BATCH_LIMIT || 20);
+
+async function fetchPendingIncomingMessages(adminId) {
+  const windowInterval = `${RECOVERY_WINDOW_HOURS} hours`;
+  const [rows] = await db.query(
+    `
+      SELECT
+        c.id as user_id,
+        c.phone,
+        mi.message_text as incoming_text,
+        mi.created_at as incoming_at,
+        mo.message_text as outgoing_text,
+        mo.created_at as outgoing_at
+      FROM contacts c
+      JOIN LATERAL (
+        SELECT m.message_text, m.created_at
+        FROM messages m
+        WHERE m.user_id = c.id
+          AND m.admin_id = ?
+          AND m.message_type = 'incoming'
+          AND m.created_at >= NOW() - ($2::interval)
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      ) mi ON true
+      LEFT JOIN LATERAL (
+        SELECT m.message_text, m.created_at
+        FROM messages m
+        WHERE m.user_id = c.id
+          AND m.admin_id = ?
+          AND m.message_type = 'outgoing'
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      ) mo ON true
+      WHERE mi.created_at > COALESCE(mo.created_at, '1970-01-01'::timestamptz)
+      ORDER BY mi.created_at ASC
+      LIMIT ?
+    `,
+    [adminId, windowInterval, adminId, RECOVERY_BATCH_LIMIT]
+  );
+  return rows || [];
+}
+
+async function recoverPendingMessages(session) {
+  const adminId = session?.adminId;
+  if (!Number.isFinite(adminId)) return;
+  if (!session?.state?.isReady) return;
+
+  const adminProfile = await getAdminAutomationProfile(adminId);
+  const profession = adminProfile?.profession || DEFAULT_PROFESSION;
+  if (!ALLOWED_AUTOMATION_PROFESSIONS.has(profession)) {
+    return;
+  }
+
+  const pending = await fetchPendingIncomingMessages(adminId);
+  if (!pending.length) return;
+
+  for (const row of pending) {
+    const normalized = String(row?.phone || "").replace(/[^\d]/g, "");
+    if (!normalized) continue;
+    await handleIncomingMessage({
+      session,
+      from: `${normalized}@c.us`,
+      text: row.incoming_text,
+      skipLog: true,
+      skipDuplicateCheck: true,
+      lastOutgoingText: row.outgoing_text,
+    });
+    await delay(500);
+  }
 }
 
 /* ===============================

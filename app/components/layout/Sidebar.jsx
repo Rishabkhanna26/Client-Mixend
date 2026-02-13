@@ -98,13 +98,15 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
   ];
   const visibleItems = filterMenuItems(user?.admin_tier, menuItems);
 
-  const widthClass = collapsed ? 'w-64 lg:w-20' : 'w-64';
+  const widthClass = collapsed
+    ? 'w-[85vw] max-w-[300px] lg:w-20'
+    : 'w-[85vw] max-w-[320px] lg:w-64';
   const translateClass = mobileOpen ? 'translate-x-0' : '-translate-x-full';
   const showLabels = !collapsed || mobileOpen;
 
   return (
     <aside
-      className={`${widthClass} ${translateClass} lg:translate-x-0 bg-aa-dark-blue h-screen fixed left-0 top-0 flex flex-col z-50 transition-transform duration-200 ease-out`}
+      className={`${widthClass} ${translateClass} lg:translate-x-0 bg-aa-dark-blue h-[100dvh] max-h-[100dvh] fixed left-0 top-0 flex flex-col z-50 transition-transform duration-200 ease-out`}
       data-testid="sidebar"
     >
       {/* Logo */}

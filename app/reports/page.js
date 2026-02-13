@@ -212,7 +212,7 @@ export default function ReportsPage() {
       {/* Agent Performance */}
       <Card>
         <h3 className="text-xl font-bold text-aa-dark-blue mb-4">Agent Performance</h3>
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full min-w-[900px]">
             <thead>
               <tr className="border-b border-gray-200">
@@ -254,6 +254,49 @@ export default function ReportsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="space-y-3 md:hidden">
+          {(reports?.agentPerformance || []).length === 0 ? (
+            <p className="text-sm text-aa-gray">No agent performance data available.</p>
+          ) : (
+            (reports?.agentPerformance || []).map((agent, index) => (
+              <div key={index} className="rounded-xl border border-gray-200 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-aa-dark-blue flex items-center justify-center">
+                    <span className="text-white font-semibold text-sm">
+                      {agent.name?.charAt(0) || 'A'}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-aa-text-dark">{agent.name}</p>
+                    <p className="text-xs text-aa-gray">{agent.response_time || '—'} response</p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-aa-gray">Active chats</p>
+                    <p className="font-semibold text-aa-text-dark">{agent.active_chats}</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-aa-gray">Messages sent</p>
+                    <p className="font-semibold text-aa-text-dark">{agent.messages_sent}</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-aa-gray">Resolution</p>
+                    <p className="font-semibold text-green-600">
+                      {agent.resolution_rate ? `${agent.resolution_rate}%` : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-aa-gray">Rating</p>
+                    <p className="font-semibold text-yellow-600">
+                      {agent.rating ? `★ ${agent.rating}` : '—'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </Card>
 

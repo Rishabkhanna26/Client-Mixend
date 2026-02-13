@@ -13,7 +13,7 @@ export default function Home() {
   }, [router, user, loading]);
 
   return (
-    <div className="flex items-center justify-center h-screen bg-aa-light-bg">
+    <div className="flex items-center justify-center min-h-screen bg-aa-light-bg">
       <p className="text-aa-gray">Loading...</p>
     </div>
   );

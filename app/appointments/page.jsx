@@ -11,6 +11,14 @@ import {
   faMoneyBillWave,
   faClock,
   faPenToSquare,
+  faCircleCheck,
+  faBan,
+  faCreditCard,
+  faWallet,
+  faBuildingColumns,
+  faMobileScreen,
+  faEllipsis,
+  faPercent,
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../components/auth/AuthProvider.jsx';
 import Card from '../components/common/Card.jsx';
@@ -36,7 +44,18 @@ export default function AppointmentsPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [contactsLoading, setContactsLoading] = useState(false);
+  const [createContactMode, setCreateContactMode] = useState(false);
+  const [createContactError, setCreateContactError] = useState('');
+  const [creatingContact, setCreatingContact] = useState(false);
+  const [newContactForm, setNewContactForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+  });
   const [autoOpened, setAutoOpened] = useState(false);
+  const [catalogServices, setCatalogServices] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
   const [editForm, setEditForm] = useState({
     id: null,
     user_id: '',
@@ -46,8 +65,10 @@ export default function AppointmentsPage() {
     end_time: '',
     payment_total: '',
     payment_paid: '',
+    payment_paid_mode: '',
     payment_method: '',
     payment_notes: '',
+    payment_services: [],
   });
 
   const label = useMemo(() => {
@@ -71,6 +92,7 @@ export default function AppointmentsPage() {
     return 'Bookings';
   }, [user?.profession]);
   const labelLower = label.toLowerCase();
+  const isSalon = user?.profession === 'salon';
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -101,6 +123,70 @@ export default function AppointmentsPage() {
       setContacts([]);
     } finally {
       setContactsLoading(false);
+    }
+  };
+
+  const handleNewContactChange = (field) => (event) => {
+    setNewContactForm((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
+  const createNewContact = async () => {
+    setCreateContactError('');
+    const name = String(newContactForm.name || '').trim();
+    const phone = String(newContactForm.phone || '').trim();
+    const email = String(newContactForm.email || '').trim();
+    if (!phone) {
+      throw new Error('Phone is required for a new contact.');
+    }
+    setCreatingContact(true);
+    try {
+      const response = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, phone, email }),
+      });
+      const data = await response.json();
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Failed to create contact');
+      }
+      const created = data?.data || null;
+      if (created?.id) {
+        setContacts((prev) => [created, ...prev]);
+        return created;
+      }
+      throw new Error('Failed to create contact');
+    } finally {
+      setCreatingContact(false);
+    }
+  };
+
+  const loadCatalogServices = async () => {
+    if (catalogLoading) return;
+    setCatalogLoading(true);
+    setCatalogError('');
+    try {
+      const params = new URLSearchParams();
+      params.set('type', 'service');
+      params.set('status', 'active');
+      params.set('limit', '500');
+      const response = await fetch(`/api/catalog?${params.toString()}`, {
+        credentials: 'include',
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load services');
+      }
+      const list = Array.isArray(data?.data) ? data.data : [];
+      const sorted = list
+        .filter((item) => item?.name)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      setCatalogServices(sorted);
+    } catch (error) {
+      setCatalogServices([]);
+      setCatalogError(error.message || 'Failed to load services');
+    } finally {
+      setCatalogLoading(false);
     }
   };
 
@@ -219,7 +305,96 @@ export default function AppointmentsPage() {
     return String(value);
   };
 
+  const computePaidForMode = (totalValue, mode) => {
+    const total = Number(totalValue);
+    if (!Number.isFinite(total)) return '';
+    if (mode === 'full') return String(total);
+    if (mode === 'partial') {
+      const value = Math.round(total * 0.5 * 100) / 100;
+      return String(value);
+    }
+    return '';
+  };
+
+  const derivePaidMode = (totalValue, paidValue) => {
+    const total = Number(totalValue);
+    const paid = Number(paidValue);
+    if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(paid)) return '';
+    if (paid >= total) return 'full';
+    if (paid > 0 && paid < total) return 'partial';
+    return '';
+  };
+
+  const parsePaymentNotes = (raw) => {
+    if (!raw) return { note: '', services: [] };
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        const note = typeof parsed.note === 'string' ? parsed.note : '';
+        const services = Array.isArray(parsed.services)
+          ? parsed.services.map((service) => ({
+              name: String(service?.name || ''),
+              amount:
+                service?.amount === null || service?.amount === undefined
+                  ? ''
+                  : String(service.amount),
+            }))
+          : [];
+        return { note, services };
+      }
+    } catch (error) {
+      // fall back to raw note
+    }
+    return { note: raw, services: [] };
+  };
+
+  const sanitizeServices = (services) =>
+    (Array.isArray(services) ? services : []).map((service) => ({
+      name: String(service?.name || ''),
+      amount:
+        service?.amount === null || service?.amount === undefined
+          ? ''
+          : String(service.amount),
+    }));
+
+  const calculateServicesTotal = (services) => {
+    return (Array.isArray(services) ? services : []).reduce((sum, service) => {
+      const value = Number(service?.amount);
+      if (!Number.isFinite(value)) return sum;
+      return sum + value;
+    }, 0);
+  };
+
+  const hasServiceInput = (services) =>
+    (Array.isArray(services) ? services : []).some(
+      (service) => String(service?.name || '').trim() || String(service?.amount || '').trim()
+    );
+
+  const buildPaymentNotesPayload = (note, services) => {
+    const trimmedNote = String(note || '').trim();
+    const normalized = sanitizeServices(services).filter(
+      (service) => service.name.trim() || String(service.amount || '').trim()
+    );
+    if (!normalized.length) return trimmedNote || '';
+    return JSON.stringify({ note: trimmedNote, services: normalized });
+  };
+
   const openEdit = (appt) => {
+    if (!catalogServices.length && !catalogLoading) {
+      loadCatalogServices();
+    }
+    const parsedNotes = parsePaymentNotes(appt.payment_notes || '');
+    const services = sanitizeServices(parsedNotes.services);
+    const servicesTotal = calculateServicesTotal(services);
+    const hasServices = hasServiceInput(services);
+    const totalValue =
+      appt.payment_total !== null && appt.payment_total !== undefined
+        ? toInputNumber(appt.payment_total)
+        : hasServices
+        ? toInputNumber(servicesTotal)
+        : '';
+    const paidValue = toInputNumber(appt.payment_paid);
+    const paidMode = derivePaidMode(totalValue, paidValue);
     setEditError('');
     setEditMode('edit');
     setEditForm({
@@ -228,11 +403,13 @@ export default function AppointmentsPage() {
       status: appt.status || 'booked',
       appointment_type: appt.appointment_type || '',
       start_time: toInputDateTime(appt.start_time),
-      end_time: toInputDateTime(appt.end_time),
-      payment_total: toInputNumber(appt.payment_total),
-      payment_paid: toInputNumber(appt.payment_paid),
+      end_time: isSalon ? '' : toInputDateTime(appt.end_time),
+      payment_total: totalValue,
+      payment_paid: paidValue,
+      payment_paid_mode: paidMode,
       payment_method: appt.payment_method || '',
-      payment_notes: appt.payment_notes || '',
+      payment_notes: parsedNotes.note || '',
+      payment_services: services,
     });
     setEditOpen(true);
   };
@@ -242,24 +419,119 @@ export default function AppointmentsPage() {
     const end = new Date(now.getTime() + 60 * 60 * 1000);
     setEditError('');
     setEditMode('create');
+    setCreateContactMode(false);
+    setCreateContactError('');
+    setNewContactForm({ name: '', phone: '', email: '' });
     setEditForm({
       id: null,
       user_id: '',
       status: 'booked',
       appointment_type: '',
       start_time: toInputDateTime(now),
-      end_time: toInputDateTime(end),
+      end_time: isSalon ? '' : toInputDateTime(end),
       payment_total: '',
       payment_paid: '',
+      payment_paid_mode: '',
       payment_method: '',
       payment_notes: '',
+      payment_services: [],
     });
     setEditOpen(true);
     loadContacts();
+    if (!catalogServices.length && !catalogLoading) {
+      loadCatalogServices();
+    }
   };
 
   const handleEditChange = (field) => (event) => {
-    setEditForm((prev) => ({ ...prev, [field]: event.target.value }));
+    const value = event.target.value;
+    setEditForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'payment_total' && prev.payment_paid_mode) {
+        next.payment_paid = computePaidForMode(value, prev.payment_paid_mode);
+      }
+      return next;
+    });
+  };
+
+  const setPaidMode = (mode) => {
+    setEditForm((prev) => {
+      const nextMode = prev.payment_paid_mode === mode ? '' : mode;
+      return {
+        ...prev,
+        payment_paid_mode: nextMode,
+        payment_paid: nextMode ? computePaidForMode(prev.payment_total, nextMode) : prev.payment_paid,
+      };
+    });
+  };
+
+  const setPaymentMethod = (value) => {
+    setEditForm((prev) => ({ ...prev, payment_method: value }));
+  };
+
+  const updatePaymentServices = (updater) => {
+    setEditForm((prev) => {
+      const current = Array.isArray(prev.payment_services) ? prev.payment_services : [];
+      const nextServices = typeof updater === 'function' ? updater(current) : updater;
+      const sanitized = sanitizeServices(nextServices);
+      const total = calculateServicesTotal(sanitized);
+      const totalValue = hasServiceInput(sanitized) ? String(total) : '';
+      const paidValue = prev.payment_paid_mode
+        ? computePaidForMode(totalValue, prev.payment_paid_mode)
+        : prev.payment_paid;
+      return {
+        ...prev,
+        payment_services: sanitized,
+        payment_total: totalValue,
+        payment_paid: paidValue,
+      };
+    });
+  };
+
+  const findCatalogService = (name) => {
+    const normalized = String(name || '').trim().toLowerCase();
+    if (!normalized) return null;
+    return catalogServices.find(
+      (service) => String(service?.name || '').trim().toLowerCase() === normalized
+    );
+  };
+
+  const parsePriceLabel = (label) => {
+    const raw = String(label || '')
+      .replace(/[, ]+/g, ' ')
+      .trim();
+    const match = raw.match(/(\d+(\.\d+)?)/);
+    if (!match) return null;
+    const value = Number(match[1]);
+    return Number.isFinite(value) ? value : null;
+  };
+
+  const addServiceRow = () => {
+    updatePaymentServices((services) => [...services, { name: '', amount: '' }]);
+  };
+
+  const updateServiceField = (index, field, value) => {
+    updatePaymentServices((services) =>
+      services.map((service, idx) => {
+        if (idx !== index) return service;
+        if (field === 'name') {
+          const next = { ...service, name: value };
+          const matched = findCatalogService(value);
+          if (matched) {
+            const price = parsePriceLabel(matched.price_label);
+            if (price !== null) {
+              next.amount = String(price);
+            }
+          }
+          return next;
+        }
+        return { ...service, [field]: value };
+      })
+    );
+  };
+
+  const removeServiceRow = (index) => {
+    updatePaymentServices((services) => services.filter((_, idx) => idx !== index));
   };
 
   const saveEdit = async () => {
@@ -272,7 +544,10 @@ export default function AppointmentsPage() {
         payment_total: editForm.payment_total === '' ? null : Number(editForm.payment_total),
         payment_paid: editForm.payment_paid === '' ? null : Number(editForm.payment_paid),
         payment_method: editForm.payment_method,
-        payment_notes: editForm.payment_notes,
+        payment_notes: buildPaymentNotesPayload(
+          editForm.payment_notes,
+          editForm.payment_services
+        ),
       };
       if (editForm.start_time) {
         payload.start_time = new Date(editForm.start_time).toISOString();
@@ -280,14 +555,32 @@ export default function AppointmentsPage() {
       if (editForm.end_time) {
         payload.end_time = new Date(editForm.end_time).toISOString();
       }
+      if (isSalon && payload.start_time) {
+        payload.end_time = payload.start_time;
+      }
       if (editMode === 'create' && (!payload.start_time || !payload.end_time)) {
-        throw new Error('Start and end time are required.');
+        if (!payload.start_time) {
+          throw new Error('Start time is required.');
+        }
+        if (!isSalon) {
+          throw new Error('End time is required.');
+        }
       }
 
       let response;
       if (editMode === 'create') {
-        if (!editForm.user_id) {
-          throw new Error('Please select a contact.');
+        let userId = editForm.user_id;
+        if (!userId && createContactMode) {
+          try {
+            const created = await createNewContact();
+            userId = created?.id || '';
+          } catch (error) {
+            setCreateContactError(error.message || 'Failed to create contact');
+            throw error;
+          }
+        }
+        if (!userId) {
+          throw new Error('Please select a contact or add a new one.');
         }
         response = await fetch('/api/appointments', {
           method: 'POST',
@@ -295,7 +588,7 @@ export default function AppointmentsPage() {
           credentials: 'include',
           body: JSON.stringify({
             ...payload,
-            user_id: Number(editForm.user_id),
+            user_id: Number(userId),
           }),
         });
       } else {
@@ -332,6 +625,165 @@ export default function AppointmentsPage() {
       default: return 'bg-gray-100 text-gray-800';
     }
   };
+
+  const statusOptions = [
+    {
+      value: 'booked',
+      label: 'Booked',
+      icon: faClock,
+      activeClass: 'bg-blue-600 text-white border-blue-600',
+      panelClass: 'bg-blue-50 text-blue-800 border-blue-200',
+      cardClass: 'border-blue-200 bg-blue-50 text-blue-900',
+    },
+    {
+      value: 'completed',
+      label: 'Completed',
+      icon: faCircleCheck,
+      activeClass: 'bg-green-600 text-white border-green-600',
+      panelClass: 'bg-green-50 text-green-800 border-green-200',
+      cardClass: 'border-green-200 bg-green-50 text-green-900',
+    },
+    {
+      value: 'cancelled',
+      label: 'Cancelled',
+      icon: faBan,
+      activeClass: 'bg-gray-700 text-white border-gray-700',
+      panelClass: 'bg-gray-100 text-gray-700 border-gray-200',
+      cardClass: 'border-gray-200 bg-gray-50 text-gray-800',
+    },
+  ];
+
+  const filterStatusOptions = [
+    { value: 'all', label: 'All' },
+    ...statusOptions.map(({ value, label }) => ({ value, label })),
+  ];
+
+  const renderStatusSegmented = (current, onChange, disabled = false, size = 'sm') => {
+    const sizeClass = size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm';
+    return (
+      <div
+        className={`inline-flex w-full sm:w-auto flex-wrap items-center gap-2 rounded-full border border-gray-200 bg-white p-1 ${disabled ? 'opacity-60' : ''}`}
+        role="radiogroup"
+        aria-label="Appointment status"
+      >
+        {statusOptions.map((option) => {
+          const active = current === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(option.value)}
+              disabled={disabled}
+              className={`${sizeClass} flex-1 sm:flex-initial rounded-full border font-semibold transition ${
+                active
+                  ? option.activeClass
+                  : 'bg-white text-aa-gray border-transparent hover:border-aa-orange hover:text-aa-orange'
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderStatusStacked = (current, onChange, disabled = false) => (
+    <div
+      className={`flex flex-col gap-2 w-full ${disabled ? 'opacity-60' : ''}`}
+      role="radiogroup"
+      aria-label="Appointment status"
+    >
+      {statusOptions.map((option) => {
+        const active = current === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+            className={`w-full flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+              active
+                ? option.panelClass
+                : 'bg-white text-aa-gray border-gray-200 hover:border-aa-orange hover:text-aa-orange'
+            }`}
+          >
+            <span>{option.label}</span>
+            <FontAwesomeIcon icon={option.icon} />
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const renderStatusCards = (current, onChange, disabled = false) => (
+    <div
+      className={`grid grid-cols-1 sm:grid-cols-3 gap-3 ${disabled ? 'opacity-60' : ''}`}
+      role="radiogroup"
+      aria-label="Appointment status"
+    >
+      {statusOptions.map((option) => {
+        const active = current === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+            className={`rounded-xl border-2 p-3 text-left transition ${
+              active
+                ? option.cardClass
+                : 'border-gray-200 bg-white text-aa-text-dark hover:border-aa-orange'
+            }`}
+          >
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <FontAwesomeIcon icon={option.icon} />
+              {option.label}
+            </div>
+            <p className="mt-1 text-xs text-aa-gray">
+              {option.value === 'booked'
+                ? 'Scheduled and confirmed'
+                : option.value === 'completed'
+                ? 'Service delivered'
+                : 'Cancelled by admin or client'}
+            </p>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const paidModeOptions = [
+    {
+      value: 'full',
+      label: 'Full paid',
+      description: '100% of total amount',
+      icon: faMoneyBillWave,
+      className: 'border-green-200 bg-green-50 text-green-900',
+    },
+    {
+      value: 'partial',
+      label: 'Partial paid',
+      description: 'Auto 50% of total',
+      icon: faPercent,
+      className: 'border-amber-200 bg-amber-50 text-amber-900',
+    },
+  ];
+
+  const paymentMethodOptions = [
+    { value: 'cash', label: 'Cash', icon: faMoneyBillWave, tone: 'bg-orange-50 text-orange-700 border-orange-200' },
+    { value: 'card', label: 'Card', icon: faCreditCard, tone: 'bg-blue-50 text-blue-700 border-blue-200' },
+    { value: 'upi', label: 'UPI', icon: faMobileScreen, tone: 'bg-purple-50 text-purple-700 border-purple-200' },
+    { value: 'bank', label: 'Bank', icon: faBuildingColumns, tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    { value: 'wallet', label: 'Wallet', icon: faWallet, tone: 'bg-pink-50 text-pink-700 border-pink-200' },
+    { value: 'other', label: 'Other', icon: faEllipsis, tone: 'bg-gray-100 text-gray-700 border-gray-200' },
+  ];
 
   const statusColumns = useMemo(() => {
     const columns = [
@@ -373,7 +825,7 @@ export default function AppointmentsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center min-h-[50vh]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-aa-orange mx-auto mb-4"></div>
           <p className="text-gray-600">Loading {labelLower}...</p>
@@ -424,22 +876,31 @@ export default function AppointmentsPage() {
             <Button variant="primary" onClick={openCreate}>
               Create {label.slice(0, -1)}
             </Button>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full sm:w-auto sm:min-w-[180px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
-            >
-              <option value="all">All Status</option>
-              <option value="booked">Booked</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
+            <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-1">
+              {filterStatusOptions.map((option) => {
+                const active = filterStatus === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFilterStatus(option.value)}
+                    className={`px-3 py-1 text-xs font-semibold transition ${
+                      active
+                        ? 'border-b-2 border-aa-orange text-aa-orange'
+                        : 'text-aa-gray hover:text-aa-dark-blue'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
 
-            <div className="inline-flex rounded-full border border-gray-200 bg-white p-1">
+            <div className="inline-flex w-full sm:w-auto rounded-full border border-gray-200 bg-white p-1">
               <button
                 type="button"
                 onClick={() => setViewMode('list')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold transition ${
+                className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold transition ${
                   viewMode === 'list'
                     ? 'bg-aa-dark-blue text-white'
                     : 'text-aa-gray hover:text-aa-dark-blue'
@@ -451,7 +912,7 @@ export default function AppointmentsPage() {
               <button
                 type="button"
                 onClick={() => setViewMode('board')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold transition ${
+                className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold transition ${
                   viewMode === 'board'
                     ? 'bg-aa-dark-blue text-white'
                     : 'text-aa-gray hover:text-aa-dark-blue'
@@ -509,18 +970,13 @@ export default function AppointmentsPage() {
                     })()}
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <select
-                    value={appt.status || 'booked'}
-                    onChange={(e) => updateStatus(appt.id, e.target.value)}
-                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-aa-orange"
-                    disabled={updatingId === appt.id}
-                    aria-label="Update appointment status"
-                  >
-                    <option value="booked">Booked</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+                <div className="flex w-full sm:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  {renderStatusSegmented(
+                    appt.status || 'booked',
+                    (value) => updateStatus(appt.id, value),
+                    updatingId === appt.id,
+                    'md'
+                  )}
                   <Button
                     variant="outline"
                     className="text-sm px-4 py-2"
@@ -573,17 +1029,11 @@ export default function AppointmentsPage() {
                         {appt.start_time ? new Date(appt.start_time).toLocaleTimeString() : '—'}
                       </div>
                       <div className="mt-3 flex items-center justify-between gap-2">
-                        <select
-                          value={appt.status || 'booked'}
-                          onChange={(e) => updateStatus(appt.id, e.target.value)}
-                          className="flex-1 px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-aa-orange"
-                          disabled={updatingId === appt.id}
-                          aria-label="Update appointment status"
-                        >
-                          <option value="booked">Booked</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
+                        {renderStatusStacked(
+                          appt.status || 'booked',
+                          (value) => updateStatus(appt.id, value),
+                          updatingId === appt.id
+                        )}
                         <button
                           type="button"
                           className="px-3 py-1 text-xs font-semibold text-aa-orange border border-aa-orange rounded-full hover:bg-aa-orange hover:text-white transition"
@@ -634,22 +1084,68 @@ export default function AppointmentsPage() {
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {editMode === 'create' && (
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-aa-text-dark mb-2">Contact</label>
-                <select
-                  value={editForm.user_id}
-                  onChange={handleEditChange('user_id')}
-                  className="w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
-                >
-                  <option value="">Select contact</option>
-                  {contacts.map((contact) => (
-                    <option key={contact.id} value={contact.id}>
-                      {contact.name || 'Unknown'} • {contact.phone || '—'}
-                    </option>
-                  ))}
-                </select>
-                {contactsLoading && (
-                  <p className="text-xs text-aa-gray mt-2">Loading contacts...</p>
+              <div className="md:col-span-2 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-semibold text-aa-text-dark">
+                    {createContactMode ? 'New Contact' : 'Select Existing Contact'}
+                  </label>
+                  <Button
+                    variant="outline"
+                    className="text-xs"
+                    onClick={() => {
+                      setCreateContactError('');
+                      setCreateContactMode((prev) => !prev);
+                      if (!createContactMode) {
+                        setEditForm((prev) => ({ ...prev, user_id: '' }));
+                      }
+                    }}
+                  >
+                    {createContactMode ? 'Use Existing' : 'Add New'}
+                  </Button>
+                </div>
+                {!createContactMode ? (
+                  <>
+                    <select
+                      value={editForm.user_id}
+                      onChange={handleEditChange('user_id')}
+                      className="w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
+                    >
+                      <option value="">Select existing contact</option>
+                      {contacts.map((contact) => (
+                        <option key={contact.id} value={contact.id}>
+                          {contact.name || 'Unknown'} • {contact.phone || '—'}
+                        </option>
+                      ))}
+                    </select>
+                    {contactsLoading && (
+                      <p className="text-xs text-aa-gray mt-2">Loading contacts...</p>
+                    )}
+                  </>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Input
+                      label="Full Name"
+                      value={newContactForm.name}
+                      onChange={handleNewContactChange('name')}
+                      placeholder="Customer name"
+                    />
+                    <Input
+                      label="Phone"
+                      value={newContactForm.phone}
+                      onChange={handleNewContactChange('phone')}
+                      placeholder="Phone number"
+                      required
+                    />
+                    <Input
+                      label="Email (optional)"
+                      value={newContactForm.email}
+                      onChange={handleNewContactChange('email')}
+                      placeholder="Email address"
+                    />
+                  </div>
+                )}
+                {createContactError && (
+                  <p className="text-xs text-red-600">{createContactError}</p>
                 )}
               </div>
             )}
@@ -661,15 +1157,11 @@ export default function AppointmentsPage() {
             />
             <div>
               <label className="block text-sm font-semibold text-aa-text-dark mb-2">Status</label>
-              <select
-                value={editForm.status}
-                onChange={handleEditChange('status')}
-                className="w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
-              >
-                <option value="booked">Booked</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+              {renderStatusCards(
+                editForm.status || 'booked',
+                (value) => setEditForm((prev) => ({ ...prev, status: value })),
+                false
+              )}
             </div>
             <Input
               label="Start Time"
@@ -677,12 +1169,19 @@ export default function AppointmentsPage() {
               value={editForm.start_time}
               onChange={handleEditChange('start_time')}
             />
-            <Input
-              label="End Time"
-              type="datetime-local"
-              value={editForm.end_time}
-              onChange={handleEditChange('end_time')}
-            />
+            {!isSalon && (
+              <Input
+                label="End Time"
+                type="datetime-local"
+                value={editForm.end_time}
+                onChange={handleEditChange('end_time')}
+              />
+            )}
+            {isSalon && (
+              <p className="text-xs text-aa-gray md:col-span-1">
+                End time is optional for salons.
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border border-gray-200 p-4 space-y-4">
@@ -698,29 +1197,135 @@ export default function AppointmentsPage() {
                 onChange={handleEditChange('payment_total')}
                 placeholder="0"
               />
+              <div className="md:col-span-1">
+                <label className="block text-sm font-semibold text-aa-text-dark mb-2">Paid Type</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {paidModeOptions.map((option) => {
+                    const active = editForm.payment_paid_mode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setPaidMode(option.value)}
+                        className={`rounded-xl border-2 p-3 text-left transition ${
+                          active
+                            ? option.className
+                            : 'border-gray-200 bg-white text-aa-text-dark hover:border-aa-orange'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 text-sm font-semibold">
+                          <FontAwesomeIcon icon={option.icon} />
+                          {option.label}
+                        </div>
+                        <p className="mt-1 text-xs text-aa-gray">{option.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <Input
                 label="Paid Amount"
                 type="number"
                 value={editForm.payment_paid}
                 onChange={handleEditChange('payment_paid')}
                 placeholder="0"
+                disabled={Boolean(editForm.payment_paid_mode)}
               />
-              <div>
+              <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-aa-text-dark mb-2">Payment Method</label>
-                <select
-                  value={editForm.payment_method}
-                  onChange={handleEditChange('payment_method')}
-                  className="w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
-                >
-                  <option value="">Select method</option>
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="upi">UPI</option>
-                  <option value="bank">Bank Transfer</option>
-                  <option value="wallet">Wallet</option>
-                  <option value="other">Other</option>
-                </select>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('')}
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                      !editForm.payment_method
+                        ? 'bg-gray-900 text-white border-gray-900'
+                        : 'border-gray-200 text-aa-gray hover:border-aa-orange hover:text-aa-orange'
+                    }`}
+                  >
+                    Not set
+                  </button>
+                  {paymentMethodOptions.map((option) => {
+                    const active = editForm.payment_method === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setPaymentMethod(option.value)}
+                        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                          active
+                            ? option.tone
+                            : 'border-gray-200 text-aa-gray hover:border-aa-orange hover:text-aa-orange'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <FontAwesomeIcon icon={option.icon} />
+                          {option.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-semibold text-aa-text-dark">Services</label>
+                <Button variant="outline" className="text-xs" onClick={addServiceRow}>
+                  Add Service
+                </Button>
+              </div>
+              <datalist id="appointment-service-options">
+                {catalogServices.map((service) => (
+                  <option
+                    key={service.id}
+                    value={service.name}
+                    label={service.price_label ? `${service.name} • ${service.price_label}` : service.name}
+                  />
+                ))}
+              </datalist>
+              {catalogLoading && (
+                <p className="text-xs text-aa-gray">Loading services...</p>
+              )}
+              {catalogError && (
+                <p className="text-xs text-red-600">{catalogError}</p>
+              )}
+              {editForm.payment_services?.length ? (
+                editForm.payment_services.map((service, index) => (
+                  <div
+                    key={`service-${index}`}
+                    className="grid grid-cols-1 md:grid-cols-[1fr_140px_auto] gap-3 items-end"
+                  >
+                    <Input
+                      label={`Service ${index + 1}`}
+                      value={service.name}
+                      onChange={(event) =>
+                        updateServiceField(index, 'name', event.target.value)
+                      }
+                      placeholder="Service name"
+                      list="appointment-service-options"
+                    />
+                    <Input
+                      label="Amount"
+                      type="number"
+                      value={service.amount}
+                      onChange={(event) =>
+                        updateServiceField(index, 'amount', event.target.value)
+                      }
+                      placeholder="0"
+                    />
+                    <Button
+                      variant="ghost"
+                      className="text-xs text-red-600 hover:bg-red-50"
+                      onClick={() => removeServiceRow(index)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-aa-gray">No services added yet.</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-semibold text-aa-text-dark mb-2">Payment Notes</label>
