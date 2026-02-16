@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import Button from '../components/common/Button.jsx';
 import Input from '../components/common/Input.jsx';
 import Modal from '../components/common/Modal.jsx';
@@ -134,108 +135,139 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-aa-dark-blue to-aa-dark-blue/80 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="flex justify-center mb-8">
-          <div className="w-16 h-16 bg-aa-orange rounded-xl flex items-center justify-center">
-            <span className="text-white font-bold text-3xl">A</span>
-          </div>
-        </div>
+    <div className="auth-v2-shell auth-v2-login relative min-h-screen overflow-hidden px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
+      <div className="pointer-events-none absolute inset-0">
+        <span className="auth-v2-blob auth-v2-blob-one" />
+        <span className="auth-v2-blob auth-v2-blob-two" />
+        <span className="auth-v2-blob auth-v2-blob-three" />
+        <span className="auth-v2-blob auth-v2-blob-four" />
+      </div>
 
-        {/* Login Card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-aa-dark-blue mb-2 text-center">AlgoAura</h1>
-          <p className="text-aa-gray text-center mb-8">WhatsApp CRM Dashboard</p>
-
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              {error}
+      <div className="auth-v2-wrap relative z-10 mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-6xl items-center">
+        <div className="grid w-full gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+          <aside className="auth-v2-panel hidden rounded-[2rem] border border-white/20 bg-aa-dark-blue/90 p-8 text-white shadow-[0_26px_70px_rgba(10,31,68,0.45)] backdrop-blur lg:flex lg:flex-col lg:justify-between">
+            <div>
+              <p className="inline-flex rounded-full border border-white/25 bg-white/10 px-4 py-1 text-xs font-semibold tracking-[0.24em] uppercase">
+                AlgoAura CRM
+              </p>
+              <h2 className="mt-6 text-4xl font-black leading-tight">
+                Welcome back to your WhatsApp growth hub.
+              </h2>
+              <p className="mt-4 text-sm text-white/80">
+                Track chats, leads, orders, and appointments from one dashboard built for fast teams.
+              </p>
             </div>
-          )}
+            <div className="space-y-3 text-sm text-white/85">
+              <p className="rounded-xl border border-white/15 bg-white/10 px-4 py-3">Real-time customer communication</p>
+              <p className="rounded-xl border border-white/15 bg-white/10 px-4 py-3">Role-based access and secure controls</p>
+              <p className="rounded-xl border border-white/15 bg-white/10 px-4 py-3">Automation + AI replies when you need speed</p>
+            </div>
+          </aside>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <Input
-              label="User ID / Email / Phone"
-              type="text"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="User ID, email, or phone"
-              required
-              icon={<FontAwesomeIcon icon={faEnvelope} style={{ fontSize: 18 }} />}
-            />
+          <section className="auth-v2-card rounded-[2rem] border border-white/60 bg-white/92 p-6 shadow-[0_26px_65px_rgba(10,31,68,0.22)] backdrop-blur-sm sm:p-8 lg:p-10">
+            <div className="mb-7 flex justify-center">
+              <div className="auth-v2-logo-wrap">
+                <Image
+                  src="/algoaura_logo.png"
+                  alt="AlgoAura"
+                  width={360}
+                  height={110}
+                  priority
+                  className="auth-v2-logo-img"
+                />
+              </div>
+            </div>
 
-            <Input
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              icon={<FontAwesomeIcon icon={faLock} style={{ fontSize: 18 }} />}
-              rightElement={
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="text-gray-400 hover:text-gray-600"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} />
-                </button>
-              }
-            />
+            <h1 className="text-center text-3xl font-black text-aa-dark-blue">Sign in</h1>
+            <p className="mt-2 text-center text-sm text-aa-gray">Access your workspace and continue managing customers.</p>
+
+            {error && (
+              <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleLogin} className="mt-6 space-y-4">
+              <Input
+                label="User ID / Email / Phone"
+                type="text"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="User ID, email, or phone"
+                required
+                icon={<FontAwesomeIcon icon={faEnvelope} style={{ fontSize: 18 }} />}
+              />
+
+              <Input
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                icon={<FontAwesomeIcon icon={faLock} style={{ fontSize: 18 }} />}
+                rightElement={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="text-gray-400 hover:text-gray-600"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} />
+                  </button>
+                }
+              />
+
+              <Button
+                type="submit"
+                disabled={loading}
+                className="mt-2 w-full rounded-xl py-3 text-base"
+                icon={<FontAwesomeIcon icon={faRightToBracket} style={{ fontSize: 18 }} />}
+              >
+                {loading ? 'Logging in...' : 'Login'}
+              </Button>
+            </form>
+
+            <div className="auth-v2-divider my-6">
+              <span>or</span>
+            </div>
 
             <Button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-6"
-              icon={<FontAwesomeIcon icon={faRightToBracket} style={{ fontSize: 18 }} />}
-            >
-              {loading ? 'Logging in...' : 'Login'}
-            </Button>
-          </form>
-
-          <div className="flex items-center gap-3 my-5">
-            <div className="h-px flex-1 bg-gray-200" />
-            <span className="text-xs text-aa-gray uppercase tracking-wide">or</span>
-            <div className="h-px flex-1 bg-gray-200" />
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={() => {
-              window.location.href = '/api/auth/google/start';
-            }}
-          >
-            Continue with Google
-          </Button>
-
-          <div className="mt-4 text-center">
-            <button
               type="button"
+              variant="outline"
+              className="w-full rounded-xl py-3 text-base"
               onClick={() => {
-                setForgotOpen(true);
-                setForgotError('');
-                setForgotIdentifier(email || '');
+                window.location.href = '/api/auth/google/start';
               }}
-              className="text-sm text-aa-orange font-semibold hover:underline"
             >
-              Forgot password?
-            </button>
-          </div>
+              Continue with Google
+            </Button>
 
-          <p className="text-center text-aa-gray text-sm mt-6">
-            New here?{' '}
-            <button
-              type="button"
-              onClick={() => router.push('/signup')}
-              className="text-aa-orange font-semibold hover:underline"
-            >
-              Create an account
-            </button>
-          </p>
+            <div className="mt-5 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotOpen(true);
+                  setForgotError('');
+                  setForgotIdentifier(email || '');
+                }}
+                className="text-sm font-semibold text-aa-orange hover:underline"
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            <p className="mt-6 text-center text-sm text-aa-gray">
+              New here?{' '}
+              <button
+                type="button"
+                onClick={() => router.push('/signup')}
+                className="font-semibold text-aa-orange hover:underline"
+              >
+                Create an account
+              </button>
+            </p>
+          </section>
         </div>
       </div>
 

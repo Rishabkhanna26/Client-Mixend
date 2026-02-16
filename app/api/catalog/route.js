@@ -1,6 +1,7 @@
 import { requireAuth } from '../../../lib/auth-server';
 import { createCatalogItem, getCatalogItems } from '../../../lib/db-helpers';
 import { parsePagination, parseSearch, parseStatus } from '../../../lib/api-utils';
+import { canUseCatalogItemType } from '../../../lib/business.js';
 
 const parseType = (searchParams) => {
   const value = searchParams?.get('type');
@@ -74,6 +75,12 @@ export async function POST(request) {
     }
     if (!name) {
       return Response.json({ success: false, error: 'Name is required.' }, { status: 400 });
+    }
+    if (!canUseCatalogItemType(user, itemType)) {
+      return Response.json(
+        { success: false, error: `Your business type cannot add ${itemType} items.` },
+        { status: 403 }
+      );
     }
 
     const item = await createCatalogItem({

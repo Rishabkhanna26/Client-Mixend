@@ -1,6 +1,7 @@
 import { createAppointment, getAppointments, getUserById } from '../../../lib/db-helpers';
 import { parsePagination, parseSearch, parseStatus } from '../../../lib/api-utils';
 import { requireAuth } from '../../../lib/auth-server';
+import { hasServiceAccess } from '../../../lib/business.js';
 
 const ALLOWED_STATUSES = new Set(['booked', 'completed', 'cancelled']);
 const ALLOWED_PAYMENT_METHODS = new Set(['cash', 'card', 'upi', 'bank', 'wallet', 'other', '']);
@@ -8,14 +9,23 @@ const ALLOWED_PAYMENT_METHODS = new Set(['cash', 'card', 'upi', 'bank', 'wallet'
 export async function GET(req) {
   try {
     const authUser = await requireAuth();
+    if (!hasServiceAccess(authUser)) {
+      return Response.json(
+        { success: false, error: 'Appointments are disabled for this business type.' },
+        { status: 403 }
+      );
+    }
     const { searchParams } = new URL(req.url);
     const { limit, offset } = parsePagination(searchParams);
     const search = parseSearch(searchParams);
     const status = parseStatus(searchParams);
-    const appointments = await getAppointments(
-      authUser.id,
-      { search, status, limit: limit + 1, offset }
-    );
+    const adminScopeId = authUser.admin_tier === 'super_admin' ? null : authUser.id;
+    const appointments = await getAppointments(adminScopeId, {
+      search,
+      status,
+      limit: limit + 1,
+      offset,
+    });
     const hasMore = appointments.length > limit;
     const data = hasMore ? appointments.slice(0, limit) : appointments;
     const response = Response.json({
@@ -41,6 +51,12 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const authUser = await requireAuth();
+    if (!hasServiceAccess(authUser)) {
+      return Response.json(
+        { success: false, error: 'Appointments are disabled for this business type.' },
+        { status: 403 }
+      );
+    }
     const body = await req.json();
 
     const userId = Number(body?.user_id);
@@ -64,7 +80,6 @@ export async function POST(req) {
     const appointmentType = String(body?.appointment_type || '').trim();
     const start = new Date(body?.start_time);
     const endRaw = body?.end_time;
-    const isSalon = authUser.profession === 'salon';
     let end = endRaw ? new Date(endRaw) : null;
     if (Number.isNaN(start.getTime())) {
       return Response.json({ success: false, error: 'Invalid start time.' }, { status: 400 });
@@ -72,15 +87,11 @@ export async function POST(req) {
     if (end && Number.isNaN(end.getTime())) {
       end = null;
     }
-    if (!isSalon) {
-      if (!end) {
-        return Response.json({ success: false, error: 'End time is required.' }, { status: 400 });
-      }
-      if (end <= start) {
-        return Response.json({ success: false, error: 'End time must be after start time.' }, { status: 400 });
-      }
-    } else if (!end) {
-      end = new Date(start.getTime());
+    if (!end) {
+      return Response.json({ success: false, error: 'End time is required.' }, { status: 400 });
+    }
+    if (end <= start) {
+      return Response.json({ success: false, error: 'End time must be after start time.' }, { status: 400 });
     }
 
     const paymentMethod = String(body?.payment_method || '');
@@ -91,7 +102,6 @@ export async function POST(req) {
     const created = await createAppointment({
       user_id: userId,
       admin_id: authUser.id,
-      profession: authUser.profession || null,
       appointment_type: appointmentType || null,
       start_time: start.toISOString(),
       end_time: end.toISOString(),

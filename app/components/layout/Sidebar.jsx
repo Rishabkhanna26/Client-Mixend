@@ -22,35 +22,22 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../auth/AuthProvider.jsx';
 import { filterMenuItems } from '../../../lib/access.js';
+import { getCatalogLabel, hasProductAccess, hasServiceAccess } from '../../../lib/business.js';
 
 export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClose }) {
   const pathname = usePathname();
   const { user } = useAuth();
   const [inboxCount, setInboxCount] = useState(0);
 
-  const appointmentProfessions = new Set(['astrology', 'clinic', 'salon', 'gym', 'spa', 'doctor', 'consultant']);
-  const bookingProfessions = new Set([
-    'restaurant',
-    'hotel',
-    'resort',
-    'hostel',
-    'motel',
-    'inn',
-    'lodge',
-    'guesthouse',
-    'cafe',
-    'café',
-  ]);
-  const useBookingsLabel =
-    bookingProfessions.has(user?.profession) ||
-    (Boolean(user?.profession) && !appointmentProfessions.has(user?.profession));
-  const useAppointmentsLabel = appointmentProfessions.has(user?.profession) && !useBookingsLabel;
-  const showAppointments = Boolean(user?.profession);
-  const orderProfessions = new Set(['shop', 'restaurant']);
-  const showOrders = orderProfessions.has(user?.profession);
+  const showAppointments = Boolean(user?.id) && hasServiceAccess(user);
+  const showOrders = Boolean(user?.id) && hasProductAccess(user);
+  const catalogLabel = getCatalogLabel(user);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setInboxCount(0);
+      return;
+    }
     let mounted = true;
     const inboxKey = `aa_inbox_last_seen_${user.id}`;
 
@@ -87,9 +74,9 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
     { name: 'Inbox', icon: faInbox, path: '/inbox', badge: inboxCount > 0 ? String(inboxCount) : null },
     { name: 'Contacts', icon: faUsers, path: '/contacts' },
     { name: 'Leads', icon: faChartLine, path: '/leads' },
-    { name: 'Products & Services', icon: faBoxOpen, path: '/catalog' },
+    { name: catalogLabel, icon: faBoxOpen, path: '/catalog' },
     ...(showOrders ? [{ name: 'Orders', icon: faCartShopping, path: '/orders' }] : []),
-    ...(showAppointments ? [{ name: useAppointmentsLabel ? 'Appointments' : 'Bookings', icon: faCalendarCheck, path: '/appointments' }] : []),
+    ...(showAppointments ? [{ name: 'Appointments', icon: faCalendarCheck, path: '/appointments' }] : []),
     { name: 'Reports', icon: faChartBar, path: '/reports' },
     { name: 'Admins', icon: faUserGroup, path: '/admins', roles: ['super_admin'] },
     { name: 'Settings', icon: faGear, path: '/settings' },

@@ -9,10 +9,11 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const { limit, offset } = parsePagination(searchParams);
     const search = parseSearch(searchParams);
-    const messages = await getAllMessages(
-      authUser.admin_tier === 'super_admin' ? null : authUser.id,
-      { search, limit: limit + 1, offset }
-    );
+    const messages = await getAllMessages(authUser.id, {
+      search,
+      limit: limit + 1,
+      offset,
+    });
     const hasMore = messages.length > limit;
     const data = hasMore ? messages.slice(0, limit) : messages;
     const response = Response.json({

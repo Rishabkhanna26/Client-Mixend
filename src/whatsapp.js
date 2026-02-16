@@ -134,6 +134,10 @@ const getAdminAISettings = async (adminId) => {
   return data;
 };
 
+const isMissingColumnError = (error) =>
+  Boolean(error) &&
+  (error.code === "42703" || String(error.message || "").toLowerCase().includes("column"));
+
 const getAdminAutomationProfile = async (adminId) => {
   if (!Number.isFinite(adminId)) return null;
   const cached = adminProfileCache.get(adminId);
@@ -141,16 +145,64 @@ const getAdminAutomationProfile = async (adminId) => {
   if (cached && now - cached.at < ADMIN_PROFILE_TTL_MS) {
     return cached.data;
   }
-  const [rows] = await db.query(
-    `SELECT profession
-     FROM admins
-     WHERE id = ?
-     LIMIT 1`,
-    [adminId]
-  );
-  const data = rows[0] || { profession: DEFAULT_PROFESSION };
+  let rows;
+  try {
+    [rows] = await db.query(
+      `SELECT business_type, business_category, automation_enabled
+       FROM admins
+       WHERE id = ?
+       LIMIT 1`,
+      [adminId]
+    );
+  } catch (error) {
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+    [rows] = await db.query(
+      `SELECT business_type, business_category
+       FROM admins
+       WHERE id = ?
+       LIMIT 1`,
+      [adminId]
+    );
+  }
+  const data =
+    rows[0] || {
+      business_type: "both",
+      business_category: "General",
+      automation_enabled: true,
+    };
+  if (typeof data.automation_enabled !== "boolean") {
+    data.automation_enabled = true;
+  }
   adminProfileCache.set(adminId, { at: now, data });
   return data;
+};
+
+const getContactByPhone = async (phone) => {
+  let rows;
+  try {
+    [rows] = await db.query(
+      `SELECT id, name, email, assigned_admin_id, automation_disabled
+       FROM contacts
+       WHERE phone = ? OR regexp_replace(phone, '\\D', '', 'g') = ?
+       LIMIT 1`,
+      [phone, phone]
+    );
+  } catch (error) {
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+    [rows] = await db.query(
+      `SELECT id, name, email, assigned_admin_id
+       FROM contacts
+       WHERE phone = ? OR regexp_replace(phone, '\\D', '', 'g') = ?
+       LIMIT 1`,
+      [phone, phone]
+    );
+    rows = rows.map((row) => ({ ...row, automation_disabled: false }));
+  }
+  return rows || [];
 };
 
 const MAIN_MENU_KEYWORDS = ["menu", "main menu", "back", "home", "मुख्य मेनू", "मेनू"];
@@ -278,8 +330,6 @@ const getAdminCatalogItems = async (adminId) => {
 };
 
 const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
-  if (!catalog?.hasCatalog) return baseAutomation;
-
   const nextAutomation = { ...baseAutomation };
 
   const serviceLabel = baseAutomation.serviceLabel || "Services";
@@ -287,7 +337,7 @@ const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
   const execLabel = baseAutomation.execLabel || "Talk to Executive";
 
   const serviceOptions = [];
-  const serviceItems = catalog.services || [];
+  const serviceItems = catalog?.services || [];
   serviceItems.forEach((item, idx) => {
     serviceOptions.push({
       id: `service_${item.id}`,
@@ -312,7 +362,7 @@ const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
   });
 
   const productOptions = [];
-  const productItems = catalog.products || [];
+  const productItems = catalog?.products || [];
   productItems.forEach((item, idx) => {
     productOptions.push({
       id: `product_${item.id}`,
@@ -328,6 +378,52 @@ const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
     label: "Main Menu",
     keywords: MAIN_MENU_KEYWORDS,
   });
+
+  const mainMenuChoices = [];
+  if (serviceItems.length > 0) {
+    mainMenuChoices.push({
+      id: "SERVICES",
+      number: String(mainMenuChoices.length + 1),
+      label: serviceLabel,
+    });
+  }
+  if (productItems.length > 0) {
+    mainMenuChoices.push({
+      id: "PRODUCTS",
+      number: String(mainMenuChoices.length + 1),
+      label: productLabel,
+    });
+  }
+  mainMenuChoices.push({
+    id: "EXECUTIVE",
+    number: String(mainMenuChoices.length + 1),
+    label: execLabel,
+  });
+
+  const serviceChoice = mainMenuChoices.find((choice) => choice.id === "SERVICES");
+  const productChoice = mainMenuChoices.find((choice) => choice.id === "PRODUCTS");
+  const executiveChoice = mainMenuChoices.find((choice) => choice.id === "EXECUTIVE");
+
+  nextAutomation.mainMenuChoices = mainMenuChoices;
+  nextAutomation.supportsServices = Boolean(serviceChoice);
+  nextAutomation.supportsProducts = Boolean(productChoice);
+  nextAutomation.mainMenuText = buildMainMenuText({
+    brandName: baseAutomation.brandName || "AlgoAura",
+    serviceLabel,
+    productLabel,
+    execLabel,
+    menuChoices: mainMenuChoices,
+  });
+  nextAutomation.returningMenuText = (name) =>
+    buildReturningMenuText(
+      {
+        serviceLabel,
+        productLabel,
+        execLabel,
+        menuChoices: mainMenuChoices,
+      },
+      name
+    );
 
   nextAutomation.servicesMenuText = buildCatalogMenuText({
     title: `${serviceLabel}:`,
@@ -346,6 +442,25 @@ const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
   });
   nextAutomation.serviceOptions = serviceOptions;
   nextAutomation.productOptions = productOptions;
+  nextAutomation.detectMainIntent = (input) => {
+    if (textHasAny(input, EXECUTIVE_KEYWORDS)) return "EXECUTIVE";
+    if (
+      serviceChoice &&
+      textHasAny(input, [serviceLabel.toLowerCase(), "service", "services", "appointment", "booking"])
+    ) {
+      return "SERVICES";
+    }
+    if (
+      productChoice &&
+      textHasAny(input, [productLabel.toLowerCase(), "product", "products", "order", "buy"])
+    ) {
+      return "PRODUCTS";
+    }
+    if (executiveChoice && textHasAny(input, ["support", "help", "agent", "human", "talk"])) {
+      return "EXECUTIVE";
+    }
+    return null;
+  };
 
   return nextAutomation;
 };
@@ -628,33 +743,79 @@ const APPOINTMENT_SLOT_MINUTES = Number(process.env.APPOINTMENT_SLOT_MINUTES || 
 const APPOINTMENT_WINDOW_MONTHS = Number(process.env.APPOINTMENT_WINDOW_MONTHS || 3);
 
 const DEFAULT_PROFESSION = "astrology";
+const DEFAULT_MAIN_MENU_CHOICES = [
+  { id: "SERVICES", number: "1", label: "Services" },
+  { id: "PRODUCTS", number: "2", label: "Products" },
+  { id: "EXECUTIVE", number: "3", label: "Talk to Executive" },
+];
 
-const buildMainMenuText = ({ brandName, serviceLabel, productLabel, execLabel }) =>
-  [
+const getMainMenuChoices = (automation) =>
+  Array.isArray(automation?.mainMenuChoices) && automation.mainMenuChoices.length
+    ? automation.mainMenuChoices
+    : DEFAULT_MAIN_MENU_CHOICES;
+
+const getMainChoiceFromNumber = (number, automation) => {
+  if (!number) return null;
+  const match = getMainMenuChoices(automation).find((choice) => choice.number === number);
+  return match?.id || null;
+};
+
+const getMainMenuReplyHint = (automation) => {
+  const choices = getMainMenuChoices(automation);
+  const labels = choices.map((choice) => choice.number).join(", ");
+  return `_Reply with ${labels}, or type your need_`;
+};
+
+const buildMainMenuLines = (choices) =>
+  choices.map((choice) => `${choice.number}️⃣ ${choice.label}`);
+
+const buildMainMenuText = ({
+  brandName,
+  serviceLabel,
+  productLabel,
+  execLabel,
+  menuChoices = null,
+}) => {
+  const resolvedChoices =
+    menuChoices ||
+    [
+      { id: "SERVICES", number: "1", label: serviceLabel },
+      { id: "PRODUCTS", number: "2", label: productLabel },
+      { id: "EXECUTIVE", number: "3", label: execLabel },
+    ];
+  return [
     "Namaste/Hello 🙏",
     `I am a helper bot for *${brandName}*.`,
     "",
     "How can I help you today?",
     "",
-    `1️⃣ ${serviceLabel}`,
-    `2️⃣ ${productLabel}`,
-    `3️⃣ ${execLabel}`,
+    ...buildMainMenuLines(resolvedChoices),
     "",
-    "_Reply with 1, 2, or 3, or type your need_",
+    getMainMenuReplyHint({ mainMenuChoices: resolvedChoices }),
   ].join("\n");
+};
 
-const buildReturningMenuText = ({ serviceLabel, productLabel, execLabel }, name) =>
-  [
+const buildReturningMenuText = (
+  { serviceLabel, productLabel, execLabel, menuChoices = null },
+  name
+) => {
+  const resolvedChoices =
+    menuChoices ||
+    [
+      { id: "SERVICES", number: "1", label: serviceLabel },
+      { id: "PRODUCTS", number: "2", label: productLabel },
+      { id: "EXECUTIVE", number: "3", label: execLabel },
+    ];
+  return [
     `Welcome back ${name} 👋`,
     "",
     "How can we help you today?",
     "",
-    `1️⃣ ${serviceLabel}`,
-    `2️⃣ ${productLabel}`,
-    `3️⃣ ${execLabel}`,
+    ...buildMainMenuLines(resolvedChoices),
     "",
-    "_Reply with 1, 2, or 3, or type your need_",
+    getMainMenuReplyHint({ mainMenuChoices: resolvedChoices }),
   ].join("\n");
+};
 
 const buildDetectMainIntent =
   ({ serviceKeywords = [], productKeywords = [] }) =>
@@ -1409,23 +1570,36 @@ const AUTOMATION_PROFILES = {
   shop: SHOP_PROFILE,
 };
 
-const getAutomationProfile = (profession) =>
-  AUTOMATION_PROFILES[profession] || AUTOMATION_PROFILES[DEFAULT_PROFESSION];
+const AUTOMATION_PROFILE_BY_BUSINESS_TYPE = {
+  product: AUTOMATION_PROFILES.shop,
+  service: AUTOMATION_PROFILES.clinic,
+  both: AUTOMATION_PROFILES[DEFAULT_PROFESSION],
+};
 
-const parseAllowedAutomationProfessions = () => {
-  const raw = String(process.env.WHATSAPP_AUTOMATION_PROFESSIONS || "").trim();
+const normalizeBusinessType = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["product", "service", "both"].includes(normalized)) return normalized;
+  return "both";
+};
+
+const getAutomationProfile = (businessType) =>
+  AUTOMATION_PROFILE_BY_BUSINESS_TYPE[normalizeBusinessType(businessType)] ||
+  AUTOMATION_PROFILE_BY_BUSINESS_TYPE.both;
+
+const parseAllowedAutomationBusinessTypes = () => {
+  const raw = String(process.env.WHATSAPP_AUTOMATION_BUSINESS_TYPES || "").trim();
   if (!raw) {
-    return new Set(Object.keys(AUTOMATION_PROFILES));
+    return new Set(["product", "service", "both"]);
   }
   return new Set(
     raw
       .split(",")
       .map((entry) => entry.trim().toLowerCase())
-      .filter((entry) => Boolean(AUTOMATION_PROFILES[entry]))
+      .filter((entry) => ["product", "service", "both"].includes(entry))
   );
 };
 
-const ALLOWED_AUTOMATION_PROFESSIONS = parseAllowedAutomationProfessions();
+const ALLOWED_AUTOMATION_BUSINESS_TYPES = parseAllowedAutomationBusinessTypes();
 
 const textHasAny = (input, keywords) => keywords.some((word) => input.includes(word));
 
@@ -1706,12 +1880,11 @@ const bookAppointment = async ({
 
   try {
     await db.query(
-      `INSERT INTO appointments (user_id, admin_id, profession, appointment_type, start_time, end_time, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'booked')`,
+      `INSERT INTO appointments (user_id, admin_id, appointment_type, start_time, end_time, status)
+       VALUES (?, ?, ?, ?, ?, 'booked')`,
       [
         user.clientId,
         adminId,
-        user.data?.profession || null,
         appointmentType || "Appointment",
         startTime,
         endTime,
@@ -2134,13 +2307,7 @@ const handleIncomingMessage = async ({
       return;
     }
 
-    const [rows] = await db.query(
-      `SELECT id, name, email, assigned_admin_id
-       FROM contacts
-       WHERE phone = ? OR regexp_replace(phone, '\\D', '', 'g') = ?
-       LIMIT 1`,
-      [phone, phone]
-    );
+    const rows = await getContactByPhone(phone);
 
     let isReturningUser = rows.length > 0;
     let existingUser = isReturningUser
@@ -2148,6 +2315,7 @@ const handleIncomingMessage = async ({
           ...rows[0],
           name: sanitizeNameUpper(rows[0]?.name),
           email: sanitizeEmail(rows[0]?.email),
+          automation_disabled: rows[0]?.automation_disabled === true,
         }
       : null;
     let assignedAdminId = existingUser?.assigned_admin_id || activeAdminId;
@@ -2173,18 +2341,13 @@ const handleIncomingMessage = async ({
         };
       } catch (err) {
         if (err.code === "ER_DUP_ENTRY" || err.code === "23505") {
-          const [freshRows] = await db.query(
-            `SELECT id, name, email, assigned_admin_id
-             FROM contacts
-             WHERE phone = ? OR regexp_replace(phone, '\\D', '', 'g') = ?
-             LIMIT 1`,
-            [phone, phone]
-          );
+          const freshRows = await getContactByPhone(phone);
           if (freshRows.length > 0) {
             existingUser = {
               ...freshRows[0],
               name: sanitizeNameUpper(freshRows[0]?.name),
               email: sanitizeEmail(freshRows[0]?.email),
+              automation_disabled: freshRows[0]?.automation_disabled === true,
             };
             isReturningUser = true;
           }
@@ -2213,10 +2376,12 @@ const handleIncomingMessage = async ({
         partialSavedAt: null,
         finalized: false,
         idleTimer: null,
+        automationDisabled: existingUser?.automation_disabled === true,
       };
     }
 
     const user = session.users[sender];
+    user.automationDisabled = existingUser?.automation_disabled === true;
     const sendMessage = async (messageTextToSend) =>
       sendAndLog({
         client: session.client,
@@ -2234,16 +2399,19 @@ const handleIncomingMessage = async ({
       });
     }
 
-    const aiSettings = await getAdminAISettings(assignedAdminId);
     const adminProfile = await getAdminAutomationProfile(assignedAdminId);
-    const baseAutomation = getAutomationProfile(adminProfile?.profession);
+    if (adminProfile?.automation_enabled === false || user.automationDisabled) {
+      return;
+    }
+
+    const aiSettings = await getAdminAISettings(assignedAdminId);
+    const businessType = normalizeBusinessType(adminProfile?.business_type);
+    const baseAutomation = getAutomationProfile(businessType);
     const catalog = await getAdminCatalogItems(assignedAdminId);
     const automation = buildCatalogAutomation({ baseAutomation, catalog });
-    user.data.profession = adminProfile?.profession || DEFAULT_PROFESSION;
+    user.data.businessType = businessType;
 
-    const automationAllowed = ALLOWED_AUTOMATION_PROFESSIONS.has(
-      adminProfile?.profession
-    );
+    const automationAllowed = ALLOWED_AUTOMATION_BUSINESS_TYPES.has(businessType);
 
     if (aiSettings?.ai_enabled) {
       const aiReply = await fetchAIReply({
@@ -2537,24 +2705,20 @@ const handleIncomingMessage = async ({
        =============================== */
     if (user.step === "START") {
       const startNumber = extractNumber(lower);
-      const mainIntent = ["1", "2", "3"].includes(startNumber)
-        ? startNumber === "1"
-          ? "SERVICES"
-          : startNumber === "2"
-          ? "PRODUCTS"
-          : "EXECUTIVE"
-        : automation.detectMainIntent(lower);
-      const matchedService = ["1", "2", "3"].includes(startNumber)
-        ? null
-        : matchOption(lower, automation.serviceOptions);
-      const matchedProduct = ["1", "2", "3"].includes(startNumber)
-        ? null
-        : matchOption(lower, automation.productOptions);
+      const mainChoiceFromNumber = getMainChoiceFromNumber(startNumber, automation);
+      const mainIntent = mainChoiceFromNumber || automation.detectMainIntent(lower);
+      const matchedService = mainChoiceFromNumber ? null : matchOption(lower, automation.serviceOptions);
+      const matchedProduct = mainChoiceFromNumber ? null : matchOption(lower, automation.productOptions);
       const resolvedIntent =
         mainIntent || (matchedService ? "SERVICES" : matchedProduct ? "PRODUCTS" : null);
 
       await delay(1000);
       if (resolvedIntent === "SERVICES") {
+        if (!automation.supportsServices) {
+          await sendMessage(automation.mainMenuText);
+          user.step = "MENU";
+          return;
+        }
         user.data.reason = "Services";
         if (matchedService && matchedService.id === "executive") {
           await sendMessage("Sure 👍\nPlease tell us briefly *how we can help you today*.");
@@ -2584,6 +2748,11 @@ const handleIncomingMessage = async ({
         return;
       }
       if (resolvedIntent === "PRODUCTS") {
+        if (!automation.supportsProducts) {
+          await sendMessage(automation.mainMenuText);
+          user.step = "MENU";
+          return;
+        }
         user.data.reason = "Products";
         if (matchedProduct && matchedProduct.id !== "main_menu") {
           user.data.productType = matchedProduct.label;
@@ -2623,24 +2792,19 @@ const handleIncomingMessage = async ({
        =============================== */
     if (user.step === "MENU") {
       const number = extractNumber(lower);
-      const isNumericMenuChoice = ["1", "2", "3"].includes(number);
+      const mainChoiceFromNumber = getMainChoiceFromNumber(number, automation);
+      const isNumericMenuChoice = Boolean(mainChoiceFromNumber);
       const mainIntent = automation.detectMainIntent(lower);
       const matchedService = isNumericMenuChoice ? null : matchOption(lower, automation.serviceOptions);
       const matchedProduct = isNumericMenuChoice ? null : matchOption(lower, automation.productOptions);
 
-      let mainChoice = null;
-      if (["1", "2", "3"].includes(number)) {
-        mainChoice = number === "1" ? "SERVICES" : number === "2" ? "PRODUCTS" : "EXECUTIVE";
-      } else if (mainIntent) {
-        mainChoice = mainIntent;
-      } else if (matchedService) {
-        mainChoice = "SERVICES";
-      } else if (matchedProduct) {
-        mainChoice = "PRODUCTS";
-      }
+      const mainChoice =
+        mainChoiceFromNumber ||
+        mainIntent ||
+        (matchedService ? "SERVICES" : matchedProduct ? "PRODUCTS" : null);
 
       if (!mainChoice) {
-        await sendMessage("Please reply with 1, 2, or 3, or type your need 🙂");
+        await sendMessage("Please reply with a menu number, or type your need 🙂");
         return;
       }
 
@@ -2655,6 +2819,11 @@ const handleIncomingMessage = async ({
       if (mainChoice === "SERVICES" && matchedService && matchedService.id === "executive") {
         await sendMessage("Sure 👍\nPlease tell us briefly *how we can help you today*.");
         user.step = "EXECUTIVE_MESSAGE";
+        return;
+      }
+      if (mainChoice === "SERVICES" && !automation.supportsServices) {
+        await sendMessage(automation.mainMenuText);
+        user.step = "MENU";
         return;
       }
       if (mainChoice === "SERVICES" && matchedService?.bookable) {
@@ -2681,6 +2850,11 @@ const handleIncomingMessage = async ({
           matchedProduct.prompt || automation.productDetailsPrompt;
         await sendMessage(user.data.productDetailsPrompt);
         user.step = "PRODUCT_REQUIREMENTS";
+        return;
+      }
+      if (mainChoice === "PRODUCTS" && !automation.supportsProducts) {
+        await sendMessage(automation.mainMenuText);
+        user.step = "MENU";
         return;
       }
       if (mainChoice === "SERVICES") {
@@ -2925,42 +3099,85 @@ const RECOVERY_BATCH_LIMIT = Number(process.env.WHATSAPP_RECOVERY_BATCH_LIMIT ||
 
 async function fetchPendingIncomingMessages(adminId) {
   const windowInterval = `${RECOVERY_WINDOW_HOURS} hours`;
-  const [rows] = await db.query(
-    `
-      SELECT
-        c.id as user_id,
-        c.phone,
-        mi.message_text as incoming_text,
-        mi.created_at as incoming_at,
-        mo.message_text as outgoing_text,
-        mo.created_at as outgoing_at
-      FROM contacts c
-      JOIN LATERAL (
-        SELECT m.message_text, m.created_at
-        FROM messages m
-        WHERE m.user_id = c.id
-          AND m.admin_id = ?
-          AND m.message_type = 'incoming'
-          AND m.created_at >= NOW() - ($2::interval)
-        ORDER BY m.created_at DESC
-        LIMIT 1
-      ) mi ON true
-      LEFT JOIN LATERAL (
-        SELECT m.message_text, m.created_at
-        FROM messages m
-        WHERE m.user_id = c.id
-          AND m.admin_id = ?
-          AND m.message_type = 'outgoing'
-        ORDER BY m.created_at DESC
-        LIMIT 1
-      ) mo ON true
-      WHERE mi.created_at > COALESCE(mo.created_at, '1970-01-01'::timestamptz)
-      ORDER BY mi.created_at ASC
-      LIMIT ?
-    `,
-    [adminId, windowInterval, adminId, RECOVERY_BATCH_LIMIT]
-  );
-  return rows || [];
+  try {
+    const [rows] = await db.query(
+      `
+        SELECT
+          c.id as user_id,
+          c.phone,
+          mi.message_text as incoming_text,
+          mi.created_at as incoming_at,
+          mo.message_text as outgoing_text,
+          mo.created_at as outgoing_at
+        FROM contacts c
+        JOIN LATERAL (
+          SELECT m.message_text, m.created_at
+          FROM messages m
+          WHERE m.user_id = c.id
+            AND m.admin_id = ?
+            AND m.message_type = 'incoming'
+            AND m.created_at >= NOW() - ($2::interval)
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) mi ON true
+        LEFT JOIN LATERAL (
+          SELECT m.message_text, m.created_at
+          FROM messages m
+          WHERE m.user_id = c.id
+            AND m.admin_id = ?
+            AND m.message_type = 'outgoing'
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) mo ON true
+        WHERE mi.created_at > COALESCE(mo.created_at, '1970-01-01'::timestamptz)
+          AND COALESCE(c.automation_disabled, FALSE) = FALSE
+        ORDER BY mi.created_at ASC
+        LIMIT ?
+      `,
+      [adminId, windowInterval, adminId, RECOVERY_BATCH_LIMIT]
+    );
+    return rows || [];
+  } catch (error) {
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+    const [rows] = await db.query(
+      `
+        SELECT
+          c.id as user_id,
+          c.phone,
+          mi.message_text as incoming_text,
+          mi.created_at as incoming_at,
+          mo.message_text as outgoing_text,
+          mo.created_at as outgoing_at
+        FROM contacts c
+        JOIN LATERAL (
+          SELECT m.message_text, m.created_at
+          FROM messages m
+          WHERE m.user_id = c.id
+            AND m.admin_id = ?
+            AND m.message_type = 'incoming'
+            AND m.created_at >= NOW() - ($2::interval)
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) mi ON true
+        LEFT JOIN LATERAL (
+          SELECT m.message_text, m.created_at
+          FROM messages m
+          WHERE m.user_id = c.id
+            AND m.admin_id = ?
+            AND m.message_type = 'outgoing'
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) mo ON true
+        WHERE mi.created_at > COALESCE(mo.created_at, '1970-01-01'::timestamptz)
+        ORDER BY mi.created_at ASC
+        LIMIT ?
+      `,
+      [adminId, windowInterval, adminId, RECOVERY_BATCH_LIMIT]
+    );
+    return rows || [];
+  }
 }
 
 async function recoverPendingMessages(session) {
@@ -2969,9 +3186,12 @@ async function recoverPendingMessages(session) {
   if (!session?.state?.isReady) return;
 
   const adminProfile = await getAdminAutomationProfile(adminId);
+  if (adminProfile?.automation_enabled === false) {
+    return;
+  }
   const aiSettings = await getAdminAISettings(adminId);
-  const profession = adminProfile?.profession || DEFAULT_PROFESSION;
-  if (!aiSettings?.ai_enabled && !ALLOWED_AUTOMATION_PROFESSIONS.has(profession)) {
+  const businessType = normalizeBusinessType(adminProfile?.business_type);
+  if (!aiSettings?.ai_enabled && !ALLOWED_AUTOMATION_BUSINESS_TYPES.has(businessType)) {
     return;
   }
 

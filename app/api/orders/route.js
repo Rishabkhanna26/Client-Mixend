@@ -1,31 +1,22 @@
 import { requireAuth } from '../../../lib/auth-server';
 import { parsePagination } from '../../../lib/api-utils';
 import { getOrders } from '../../../lib/db-helpers';
-import { getDummyOrders } from '../../../lib/orders-dummy';
+import { hasProductAccess } from '../../../lib/business.js';
 
 export async function GET(request) {
   try {
     const user = await requireAuth();
+    if (!hasProductAccess(user)) {
+      return Response.json(
+        { success: false, error: 'Orders are disabled for this business type.' },
+        { status: 403 }
+      );
+    }
     const { searchParams } = new URL(request.url);
     const { limit, offset } = parsePagination(searchParams, { defaultLimit: 200, maxLimit: 500 });
+    const adminScopeId = user.admin_tier === 'super_admin' ? null : user.id;
 
-    let orders = await getOrders(user.id, { limit: limit + 1, offset });
-    if (orders.length === 0) {
-      const fallback = getDummyOrders(user.id, user.profession);
-      const paged = fallback.slice(offset, offset + limit + 1);
-      const hasMore = paged.length > limit;
-      return Response.json({
-        success: true,
-        data: hasMore ? paged.slice(0, limit) : paged,
-        meta: {
-          limit,
-          offset,
-          hasMore,
-          nextOffset: hasMore ? offset + limit : null,
-        },
-        meta_source: 'dummy',
-      });
-    }
+    const orders = await getOrders(adminScopeId, { limit: limit + 1, offset });
     const hasMore = orders.length > limit;
 
     return Response.json({

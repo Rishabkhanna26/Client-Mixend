@@ -22,8 +22,7 @@ import Modal from '../components/common/Modal.jsx';
 import Input from '../components/common/Input.jsx';
 import Loader from '../components/common/Loader.jsx';
 import { useAuth } from '../components/auth/AuthProvider.jsx';
-
-const ORDER_PROFESSIONS = new Set(['shop', 'restaurant']);
+import { getBusinessTypeLabel, hasProductAccess } from '../../lib/business.js';
 
 const STATUS_VARIANTS = {
   new: 'blue',
@@ -112,7 +111,7 @@ export default function OrdersPage() {
   const [activeOrder, setActiveOrder] = useState(null);
   const [noteDraft, setNoteDraft] = useState('');
 
-  const hasOrderAccess = ORDER_PROFESSIONS.has(user?.profession);
+  const hasOrderAccess = Boolean(user?.id) && hasProductAccess(user);
 
   const fetchOrders = async () => {
     if (!user?.id) return;
@@ -296,12 +295,12 @@ export default function OrdersPage() {
           </div>
           <h1 className="text-2xl font-bold text-aa-dark-blue mb-2">Orders are not enabled</h1>
           <p className="text-aa-gray">
-            Orders are available only for product-based professions. Switch your profession to access
-            WhatsApp orders.
+            Orders are available only for product-based businesses. Your current type is{' '}
+            <span className="font-semibold">{getBusinessTypeLabel(user)}</span>.
           </p>
           <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
             <Button variant="primary" onClick={() => router.push('/settings')}>
-              Update Profession
+              Update Business Type
             </Button>
             <Button variant="outline" onClick={() => router.push('/catalog')}>
               View Products & Services

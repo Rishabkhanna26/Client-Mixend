@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getConnection } from '../../../../lib/db-helpers';
 import { hashPassword, signAuthToken } from '../../../../lib/auth';
-import { sanitizeEmail, sanitizeNameUpper, sanitizePhone } from '../../../../lib/sanitize.js';
+import { sanitizeEmail, sanitizeNameUpper, sanitizePhone, sanitizeText } from '../../../../lib/sanitize.js';
 
 export async function POST(request) {
   try {
@@ -10,20 +10,14 @@ export async function POST(request) {
     const email = sanitizeEmail(body.email);
     const phone = sanitizePhone(body.phone);
     const password = body.password || '';
-    const professionRaw = typeof body.profession === 'string' ? body.profession.trim() : '';
-    const allowedProfessions = new Set([
-      'astrology',
-      'clinic',
-      'restaurant',
-      'salon',
-      'shop',
-    ]);
-    const profession = allowedProfessions.has(professionRaw) ? professionRaw : 'astrology';
-    const desiredTier = body.admin_tier === 'super_admin' ? 'super_admin' : 'client_admin';
+    const businessCategory = sanitizeText(body.business_category, 120);
+    const businessTypeRaw = typeof body.business_type === 'string' ? body.business_type.trim().toLowerCase() : '';
+    const allowedBusinessTypes = new Set(['product', 'service', 'both']);
+    const businessType = allowedBusinessTypes.has(businessTypeRaw) ? businessTypeRaw : 'both';
 
-    if (!name || !phone || !password) {
+    if (!name || !phone || !password || !businessCategory) {
       return NextResponse.json(
-        { error: 'Valid name, phone, and password are required' },
+        { error: 'Valid name, phone, password, and business category are required' },
         { status: 400 }
       );
     }
@@ -61,33 +55,26 @@ export async function POST(request) {
         `SELECT COUNT(*) as count FROM admins WHERE admin_tier = 'super_admin'`
       );
       const hasSuperAdmin = Number(superAdmins[0]?.count || 0) > 0;
-      const allowSuperSignup = process.env.ALLOW_SUPER_ADMIN_SIGNUP === 'true';
 
       let adminTier = 'client_admin';
+      let status = 'inactive';
       if (!hasSuperAdmin) {
         adminTier = 'super_admin';
-      } else if (desiredTier === 'super_admin' && allowSuperSignup) {
-        adminTier = 'super_admin';
+        status = 'active';
       }
 
       const passwordHash = hashPassword(password);
 
       const [rows] = await connection.query(
-        `INSERT INTO admins (name, phone, email, password_hash, admin_tier, status, profession)
-         VALUES (?, ?, ?, ?, ?, 'active', ?)
+        `INSERT INTO admins (
+            name, phone, email, password_hash, admin_tier, status,
+            business_category, business_type
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
-        [name, phone, email, passwordHash, adminTier, profession]
+        [name, phone, email, passwordHash, adminTier, status, businessCategory, businessType]
       );
       const insertedId = rows[0]?.id;
-
-      const token = signAuthToken({
-        id: insertedId,
-        name,
-        email,
-        phone,
-        admin_tier: adminTier,
-        profession,
-      });
 
       const response = NextResponse.json({
         user: {
@@ -96,19 +83,34 @@ export async function POST(request) {
           email,
           phone,
           admin_tier: adminTier,
-          profession,
+          status,
+          business_category: businessCategory,
+          business_type: businessType,
         },
+        requires_activation: status !== 'active',
       });
+      if (status === 'active') {
+        const token = signAuthToken({
+          id: insertedId,
+          name,
+          email,
+          phone,
+          admin_tier: adminTier,
+          status,
+          business_category: businessCategory,
+          business_type: businessType,
+        });
 
-      response.cookies.set({
-        name: 'auth_token',
-        value: token,
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 60 * 24 * 7,
-        secure: process.env.NODE_ENV === 'production',
-      });
+        response.cookies.set({
+          name: 'auth_token',
+          value: token,
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 60 * 60 * 24 * 7,
+          secure: process.env.NODE_ENV === 'production',
+        });
+      }
 
       return response;
     } finally {

@@ -1,5 +1,6 @@
 import { requireAuth } from '../../../../lib/auth-server';
 import { deleteCatalogItem, getCatalogItemById, updateCatalogItem } from '../../../../lib/db-helpers';
+import { canUseCatalogItemType } from '../../../../lib/business.js';
 
 const parseId = (value) => {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -61,6 +62,12 @@ export async function PUT(request, { params }) {
       const itemType = String(body?.item_type || body?.type || '').trim().toLowerCase();
       if (!['service', 'product'].includes(itemType)) {
         return Response.json({ success: false, error: 'Invalid item type.' }, { status: 400 });
+      }
+      if (!canUseCatalogItemType(user, itemType)) {
+        return Response.json(
+          { success: false, error: `Your business type cannot add ${itemType} items.` },
+          { status: 403 }
+        );
       }
       updates.item_type = itemType;
     }

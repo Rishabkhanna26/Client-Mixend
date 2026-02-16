@@ -25,35 +25,40 @@ const adminSeeds = [
     name: "Neha Sharma",
     phone: "9000000001",
     email: "neha.admin1@example.com",
-    profession: "astrology",
+    business_category: "Astro Consultancy",
+    business_type: "service",
     whatsapp_name: "Neha S",
   },
   {
     name: "Arjun Mehta",
     phone: "9000000002",
     email: "arjun.admin2@example.com",
-    profession: "clinic",
+    business_category: "Clinic",
+    business_type: "service",
     whatsapp_name: "Arjun M",
   },
   {
     name: "Zara Khan",
     phone: "9000000003",
     email: "zara.admin3@example.com",
-    profession: "restaurant",
+    business_category: "Restaurant",
+    business_type: "product",
     whatsapp_name: "Zara K",
   },
   {
     name: "Vivaan Patel",
     phone: "9000000004",
     email: "vivaan.admin4@example.com",
-    profession: "salon",
+    business_category: "Salon",
+    business_type: "service",
     whatsapp_name: "Vivaan P",
   },
   {
     name: "Priya Gupta",
     phone: "9000000005",
     email: "priya.admin5@example.com",
-    profession: "shop",
+    business_category: "Retail Shop",
+    business_type: "both",
     whatsapp_name: "Priya G",
   },
 ];
@@ -71,8 +76,8 @@ const contactSeeds = [
   { name: "Tanvi Shah", phone: "9100000010", email: "tanvi@example.com" },
 ];
 
-const catalogByProfession = {
-  astrology: {
+const catalogByBusinessType = {
+  service: {
     services: [
       ["Birth Chart Reading", "consultation", "INR 999", 60],
       ["Compatibility Match", "consultation", "INR 1199", 75],
@@ -80,31 +85,7 @@ const catalogByProfession = {
     ],
     products: [["Personalized Report PDF", "digital", "INR 499"]],
   },
-  clinic: {
-    services: [
-      ["Initial Consultation", "consultation", "INR 699", 30],
-      ["Follow-up Visit", "consultation", "INR 499", 20],
-      ["Teleconsultation", "telehealth", "INR 399", 20],
-    ],
-    products: [["Wellness Kit", "merchandise", "INR 999"]],
-  },
-  restaurant: {
-    services: [
-      ["Chef Table Booking", "dining", "INR 1999", 90],
-      ["Family Dinner Slot", "dining", "INR 1499", 75],
-      ["Birthday Setup", "events", "INR 2499", 120],
-    ],
-    products: [["Gift Voucher", "voucher", "INR 1000"]],
-  },
-  salon: {
-    services: [
-      ["Haircut + Styling", "grooming", "INR 699", 45],
-      ["Hair Spa", "grooming", "INR 999", 60],
-      ["Bridal Makeup", "makeup", "INR 4999", 180],
-    ],
-    products: [["Hair Care Combo", "retail", "INR 899"]],
-  },
-  shop: {
+  product: {
     services: [
       ["Personal Shopping Assist", "assist", "INR 399", 30],
       ["Bulk Order Assist", "assist", "INR 599", 45],
@@ -114,6 +95,14 @@ const catalogByProfession = {
       ["Premium Pack", "bundle", "INR 2999"],
     ],
   },
+  both: {
+    services: [
+      ["Initial Consultation", "consultation", "INR 699", 30],
+      ["Follow-up Visit", "consultation", "INR 499", 20],
+      ["Teleconsultation", "telehealth", "INR 399", 20],
+    ],
+    products: [["Wellness Kit", "merchandise", "INR 999"]],
+  },
 };
 
 async function seedAdmins(client) {
@@ -121,21 +110,23 @@ async function seedAdmins(client) {
   for (const admin of adminSeeds) {
     const { rows } = await client.query(
       `INSERT INTO admins
-        (name, phone, email, password_hash, admin_tier, status, profession, whatsapp_name, whatsapp_connected_at)
-       VALUES ($1, $2, $3, $4, 'client_admin', 'active', $5, $6, NOW())
+        (name, phone, email, password_hash, admin_tier, status, business_category, business_type, whatsapp_name, whatsapp_connected_at)
+       VALUES ($1, $2, $3, $4, 'client_admin', 'active', $5, $6, $7, NOW())
        ON CONFLICT (phone) DO UPDATE
        SET name = EXCLUDED.name,
            email = EXCLUDED.email,
-           profession = EXCLUDED.profession,
+           business_category = EXCLUDED.business_category,
+           business_type = EXCLUDED.business_type,
            whatsapp_name = EXCLUDED.whatsapp_name,
            updated_at = NOW()
-       RETURNING id, name, profession`,
+       RETURNING id, name, business_category, business_type`,
       [
         admin.name,
         admin.phone,
         admin.email,
         hashPassword("admin1234"),
-        admin.profession,
+        admin.business_category,
+        admin.business_type,
         admin.whatsapp_name,
       ]
     );
@@ -143,7 +134,7 @@ async function seedAdmins(client) {
   }
 
   const { rows: allRows } = await client.query(
-    `SELECT id, name, profession, admin_tier FROM admins ORDER BY id ASC`
+    `SELECT id, name, business_category, business_type, admin_tier FROM admins ORDER BY id ASC`
   );
   return allRows;
 }
@@ -229,10 +220,9 @@ async function seedLeadsAndNeeds(client, contacts) {
   }
 }
 
-async function seedAppointments(client, contacts, admins) {
+async function seedAppointments(client, contacts) {
   for (let i = 0; i < contacts.length; i += 1) {
     const contact = contacts[i];
-    const admin = admins.find((a) => a.id === contact.assigned_admin_id) || admins[0];
     const start = atDaysAgo(-(i + 1), 10 + (i % 5), 0);
     const end = new Date(start);
     end.setMinutes(end.getMinutes() + 60);
@@ -242,12 +232,11 @@ async function seedAppointments(client, contacts, admins) {
 
     await client.query(
       `INSERT INTO appointments
-        (user_id, admin_id, profession, appointment_type, start_time, end_time, status, payment_total, payment_paid, payment_method, payment_notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        (user_id, admin_id, appointment_type, start_time, end_time, status, payment_total, payment_paid, payment_method, payment_notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         contact.id,
         contact.assigned_admin_id,
-        admin.profession || "astrology",
         "Consultation",
         start,
         end.toISOString(),
@@ -265,7 +254,7 @@ async function seedAppointments(client, contacts, admins) {
 
 async function seedOrders(client, admins) {
   for (const admin of admins) {
-    const orders = getDummyOrders(admin.id, admin.profession || "astrology").slice(0, 8);
+    const orders = getDummyOrders(admin.id, admin.business_type || "both").slice(0, 8);
     for (const order of orders) {
       await client.query(
         `INSERT INTO orders
@@ -350,7 +339,7 @@ async function seedTemplates(client, admins) {
 async function seedCatalog(client, admins) {
   for (const admin of admins) {
     const catalog =
-      catalogByProfession[admin.profession] || catalogByProfession.astrology;
+      catalogByBusinessType[admin.business_type] || catalogByBusinessType.both;
 
     let sort = 0;
     for (const [name, category, priceLabel, durationMinutes] of catalog.services) {
@@ -362,7 +351,7 @@ async function seedCatalog(client, admins) {
           admin.id,
           name,
           category,
-          `${name} for ${admin.profession}`,
+          `${name} for ${admin.business_category || "General"}`,
           priceLabel,
           durationMinutes,
           sort,
@@ -380,7 +369,7 @@ async function seedCatalog(client, admins) {
           admin.id,
           name,
           category,
-          `${name} for ${admin.profession}`,
+          `${name} for ${admin.business_category || "General"}`,
           priceLabel,
           sort,
         ]
@@ -428,7 +417,7 @@ async function seedDatabase() {
 
     await seedMessages(client, contacts);
     await seedLeadsAndNeeds(client, contacts);
-    await seedAppointments(client, contacts, admins);
+    await seedAppointments(client, contacts);
     await seedOrders(client, admins.filter((a) => a.admin_tier !== "super_admin"));
     await seedBroadcasts(client, admins);
     await seedTemplates(client, admins);

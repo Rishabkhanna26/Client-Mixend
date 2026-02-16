@@ -1,5 +1,6 @@
 import { requireAuth } from '../../../../lib/auth-server';
 import { updateAppointment } from '../../../../lib/db-helpers';
+import { hasServiceAccess } from '../../../../lib/business.js';
 
 const ALLOWED_STATUSES = new Set(['booked', 'completed', 'cancelled']);
 const ALLOWED_PAYMENT_METHODS = new Set(['cash', 'card', 'upi', 'bank', 'wallet', 'other', '']);
@@ -7,6 +8,12 @@ const ALLOWED_PAYMENT_METHODS = new Set(['cash', 'card', 'upi', 'bank', 'wallet'
 export async function PATCH(request, context) {
   try {
     const authUser = await requireAuth();
+    if (!hasServiceAccess(authUser)) {
+      return Response.json(
+        { success: false, error: 'Appointments are disabled for this business type.' },
+        { status: 403 }
+      );
+    }
     const params = await context.params;
     const appointmentId = Number(params?.id);
     if (!Number.isFinite(appointmentId)) {
@@ -65,7 +72,8 @@ export async function PATCH(request, context) {
       return Response.json({ success: false, error: 'No updates provided' }, { status: 400 });
     }
 
-    const updated = await updateAppointment(appointmentId, updates, authUser.id);
+    const adminScopeId = authUser.admin_tier === 'super_admin' ? null : authUser.id;
+    const updated = await updateAppointment(appointmentId, updates, adminScopeId);
     if (!updated) {
       return Response.json({ success: false, error: 'Appointment not found' }, { status: 404 });
     }

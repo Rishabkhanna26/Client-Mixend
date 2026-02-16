@@ -5,9 +5,12 @@ import { useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMessage, faUsers, faCircleCheck, faCircleExclamation, faCalendarPlus, faCartShopping, faCalendarCheck } from '@fortawesome/free-solid-svg-icons';
+import { useAuth } from '../components/auth/AuthProvider.jsx';
+import { hasProductAccess, hasServiceAccess } from '../../lib/business.js';
 
 export default function DashboardPage() {
 	const router = useRouter();
+	const { user } = useAuth();
 	const [stats, setStats] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [messages, setMessages] = useState([]);
@@ -15,6 +18,7 @@ export default function DashboardPage() {
 		ai_enabled: false,
 		ai_prompt: '',
 		ai_blocklist: '',
+		automation_enabled: true,
 	});
 	const [aiSaving, setAiSaving] = useState(false);
 	const [aiStatus, setAiStatus] = useState('');
@@ -41,6 +45,7 @@ export default function DashboardPage() {
 				ai_enabled: Boolean(aiData?.data?.ai_enabled),
 				ai_prompt: aiData?.data?.ai_prompt || '',
 				ai_blocklist: aiData?.data?.ai_blocklist || '',
+				automation_enabled: aiData?.data?.automation_enabled !== false,
 			});
 		} catch (error) {
 			console.error('Failed to fetch dashboard data:', error);
@@ -66,8 +71,9 @@ export default function DashboardPage() {
 				ai_enabled: Boolean(data?.data?.ai_enabled),
 				ai_prompt: data?.data?.ai_prompt || '',
 				ai_blocklist: data?.data?.ai_blocklist || '',
+				automation_enabled: data?.data?.automation_enabled !== false,
 			});
-			setAiStatus('AI settings saved.');
+			setAiStatus('Automation settings saved.');
 			setTimeout(() => setAiStatus(''), 2000);
 		} catch (error) {
 			setAiStatus(error.message || 'Failed to save AI settings.');
@@ -95,6 +101,8 @@ export default function DashboardPage() {
 	];
 
 	const recentMessages = messages.slice(0, 5);
+  const showOrders = Boolean(user?.id) && hasProductAccess(user);
+  const showAppointments = Boolean(user?.id) && hasServiceAccess(user);
 
 	return (
 		<div className="p-4 sm:p-6 space-y-6">
@@ -106,56 +114,62 @@ export default function DashboardPage() {
 
 			{/* Quick Actions */}
 			<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-				<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
-					<div className="flex items-start justify-between gap-4">
-						<div>
-							<p className="text-xs uppercase text-gray-500 font-semibold">Booking</p>
-							<h3 className="text-lg font-bold text-gray-900 mt-2">Manage bookings</h3>
-							<p className="text-sm text-gray-600 mt-1">Review and update upcoming bookings.</p>
-						</div>
-						<FontAwesomeIcon icon={faCalendarCheck} className="text-aa-orange" style={{ fontSize: 32 }} />
-					</div>
-					<button
-						onClick={() => router.push('/appointments')}
-						className="mt-4 w-full rounded-full border border-aa-orange text-aa-orange font-semibold px-4 py-2 hover:bg-aa-orange hover:text-white transition"
-					>
-						Open bookings
-					</button>
-				</div>
+        {showAppointments && (
+				  <div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
+					  <div className="flex items-start justify-between gap-4">
+						  <div>
+							  <p className="text-xs uppercase text-gray-500 font-semibold">Booking</p>
+							  <h3 className="text-lg font-bold text-gray-900 mt-2">Manage bookings</h3>
+							  <p className="text-sm text-gray-600 mt-1">Review and update upcoming bookings.</p>
+						  </div>
+						  <FontAwesomeIcon icon={faCalendarCheck} className="text-aa-orange" style={{ fontSize: 32 }} />
+					  </div>
+					  <button
+						  onClick={() => router.push('/appointments')}
+						  className="mt-4 w-full rounded-full border border-aa-orange text-aa-orange font-semibold px-4 py-2 hover:bg-aa-orange hover:text-white transition"
+					  >
+						  Open bookings
+					  </button>
+				  </div>
+        )}
 
-				<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
-					<div className="flex items-start justify-between gap-4">
-						<div>
-							<p className="text-xs uppercase text-gray-500 font-semibold">Create</p>
-							<h3 className="text-lg font-bold text-gray-900 mt-2">Create appointment</h3>
-							<p className="text-sm text-gray-600 mt-1">Add a new appointment in seconds.</p>
-						</div>
-						<FontAwesomeIcon icon={faCalendarPlus} className="text-green-500" style={{ fontSize: 32 }} />
-					</div>
-					<button
-						onClick={() => router.push('/appointments?new=1')}
-						className="mt-4 w-full rounded-full bg-aa-dark-blue text-white font-semibold px-4 py-2 hover:bg-aa-dark-blue/90 transition"
-					>
-						Create appointment
-					</button>
-				</div>
+        {showAppointments && (
+				  <div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
+					  <div className="flex items-start justify-between gap-4">
+						  <div>
+							  <p className="text-xs uppercase text-gray-500 font-semibold">Create</p>
+							  <h3 className="text-lg font-bold text-gray-900 mt-2">Create appointment</h3>
+							  <p className="text-sm text-gray-600 mt-1">Add a new appointment in seconds.</p>
+						  </div>
+						  <FontAwesomeIcon icon={faCalendarPlus} className="text-green-500" style={{ fontSize: 32 }} />
+					  </div>
+					  <button
+						  onClick={() => router.push('/appointments?new=1')}
+						  className="mt-4 w-full rounded-full bg-aa-dark-blue text-white font-semibold px-4 py-2 hover:bg-aa-dark-blue/90 transition"
+					  >
+						  Create appointment
+					  </button>
+				  </div>
+        )}
 
-				<div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
-					<div className="flex items-start justify-between gap-4">
-						<div>
-							<p className="text-xs uppercase text-gray-500 font-semibold">Orders</p>
-							<h3 className="text-lg font-bold text-gray-900 mt-2">Place order</h3>
-							<p className="text-sm text-gray-600 mt-1">Track new WhatsApp orders fast.</p>
-						</div>
-						<FontAwesomeIcon icon={faCartShopping} className="text-blue-500" style={{ fontSize: 32 }} />
-					</div>
-					<button
-						onClick={() => router.push('/orders')}
-						className="mt-4 w-full rounded-full border border-aa-dark-blue text-aa-dark-blue font-semibold px-4 py-2 hover:bg-aa-dark-blue hover:text-white transition"
-					>
-						Go to orders
-					</button>
-				</div>
+        {showOrders && (
+				  <div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition">
+					  <div className="flex items-start justify-between gap-4">
+						  <div>
+							  <p className="text-xs uppercase text-gray-500 font-semibold">Orders</p>
+							  <h3 className="text-lg font-bold text-gray-900 mt-2">Place order</h3>
+							  <p className="text-sm text-gray-600 mt-1">Track new WhatsApp orders fast.</p>
+						  </div>
+						  <FontAwesomeIcon icon={faCartShopping} className="text-blue-500" style={{ fontSize: 32 }} />
+					  </div>
+					  <button
+						  onClick={() => router.push('/orders')}
+						  className="mt-4 w-full rounded-full border border-aa-dark-blue text-aa-dark-blue font-semibold px-4 py-2 hover:bg-aa-dark-blue hover:text-white transition"
+					  >
+						  Go to orders
+					  </button>
+				  </div>
+        )}
 			</div>
 
 			{/* Stats Grid */}
@@ -269,6 +283,20 @@ export default function DashboardPage() {
 				</p>
 				<div className="flex items-center gap-3 mb-6">
 					<input
+						id="automation-enabled"
+						type="checkbox"
+						checked={aiSettings.automation_enabled !== false}
+						onChange={(e) =>
+							setAiSettings((prev) => ({ ...prev, automation_enabled: e.target.checked }))
+						}
+						className="h-4 w-4"
+					/>
+					<label htmlFor="automation-enabled" className="text-sm font-semibold text-gray-800">
+						Enable automation messages
+					</label>
+				</div>
+				<div className="flex items-center gap-3 mb-6">
+					<input
 						id="ai-enabled"
 						type="checkbox"
 						checked={aiSettings.ai_enabled}
@@ -292,7 +320,7 @@ export default function DashboardPage() {
 								setAiSettings((prev) => ({ ...prev, ai_prompt: e.target.value }))
 							}
 							rows="6"
-							placeholder="E.g. Astrology services, booking appointments, pricing basics. Keep tone warm and professional."
+							placeholder="E.g. booking support, product details, delivery timelines. Keep tone warm and professional."
 							className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-aa-orange"
 						/>
 					</div>

@@ -33,13 +33,13 @@ export async function GET(req, context) {
     if (shouldMarkRead) {
       await markMessagesRead(
         userId,
-        authUser.admin_tier === 'super_admin' ? null : authUser.id
+        authUser.id
       );
     }
 
     const messages = await getMessagesForUser(
       userId,
-      authUser.admin_tier === 'super_admin' ? null : authUser.id,
+      authUser.id,
       {
         limit: limit + 1,
         offset,
@@ -83,11 +83,9 @@ export async function POST(req, context) {
       return Response.json({ success: false, error: 'Message is required' }, { status: 400 });
     }
 
-    if (authUser.admin_tier !== 'super_admin') {
-      const user = await getUserById(userId, authUser.id);
-      if (!user) {
-        return Response.json({ success: false, error: 'Contact not found' }, { status: 404 });
-      }
+    const user = await getUserById(userId, authUser.id);
+    if (!user) {
+      return Response.json({ success: false, error: 'Contact not found' }, { status: 404 });
     }
 
     let payload;

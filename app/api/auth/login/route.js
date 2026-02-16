@@ -19,6 +19,14 @@ export async function POST(request) {
     const connection = await getConnection();
 
     try {
+      await connection.execute(
+        `UPDATE admins
+         SET status = 'inactive'
+         WHERE status = 'active'
+           AND access_expires_at IS NOT NULL
+           AND access_expires_at <= NOW()`
+      );
+
       const idValue = Number.isFinite(Number(identifier)) ? Number(identifier) : -1;
       const phoneCandidates = Array.from(
         new Set([identifier, phoneDigits].filter(Boolean))
@@ -28,7 +36,8 @@ export async function POST(request) {
         : '';
 
       const [users] = await connection.execute(
-        `SELECT id, name, email, phone, password_hash, admin_tier, status, profession
+        `SELECT id, name, email, phone, password_hash, admin_tier, status,
+                business_category, business_type, access_expires_at
          FROM admins
          WHERE LOWER(email) = ?${phoneClause} OR id = ?
          LIMIT 1`,
@@ -45,7 +54,7 @@ export async function POST(request) {
       const user = users[0];
       if (user.status !== 'active') {
         return NextResponse.json(
-          { error: 'Account is inactive' },
+          { error: 'Account is inactive or expired' },
           { status: 403 }
         );
       }
@@ -64,7 +73,9 @@ export async function POST(request) {
         email: user.email,
         phone: user.phone,
         admin_tier: user.admin_tier,
-        profession: user.profession,
+        business_category: user.business_category,
+        business_type: user.business_type,
+        access_expires_at: user.access_expires_at,
       });
 
       const response = NextResponse.json({
@@ -74,7 +85,9 @@ export async function POST(request) {
           email: user.email,
           phone: user.phone,
           admin_tier: user.admin_tier,
-          profession: user.profession,
+          business_category: user.business_category,
+          business_type: user.business_type,
+          access_expires_at: user.access_expires_at,
         },
       });
 

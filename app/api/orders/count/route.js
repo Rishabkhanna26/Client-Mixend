@@ -1,6 +1,6 @@
 import { requireAuth } from '../../../../lib/auth-server';
 import { countOrdersSince } from '../../../../lib/db-helpers';
-import { getDummyOrders } from '../../../../lib/orders-dummy';
+import { hasProductAccess } from '../../../../lib/business.js';
 
 const parseSince = (value) => {
   if (!value) return null;
@@ -11,21 +11,14 @@ const parseSince = (value) => {
 export async function GET(request) {
   try {
     const user = await requireAuth();
+    if (!hasProductAccess(user)) {
+      return Response.json({ success: true, count: 0 });
+    }
     const { searchParams } = new URL(request.url);
     const sinceParam = searchParams.get('since');
     const sinceDate = parseSince(sinceParam);
-    const totalCount = await countOrdersSince(user.id, null);
-    if (totalCount === 0) {
-      const orders = getDummyOrders(user.id, user.profession);
-      const count = sinceDate
-        ? orders.filter((order) => {
-            const createdAt = new Date(order.created_at || order.placed_at || 0);
-            return !Number.isNaN(createdAt.getTime()) && createdAt > sinceDate;
-          }).length
-        : orders.length;
-      return Response.json({ success: true, count, meta_source: 'dummy' });
-    }
-    const count = await countOrdersSince(user.id, sinceDate);
+    const adminScopeId = user.admin_tier === 'super_admin' ? null : user.id;
+    const count = await countOrdersSince(adminScopeId, sinceDate);
     return Response.json({ success: true, count });
   } catch (error) {
     if (error.status === 401) {

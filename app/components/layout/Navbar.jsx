@@ -12,6 +12,7 @@ import {
   faRightFromBracket,
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../auth/AuthProvider.jsx';
+import { hasProductAccess } from '../../../lib/business.js';
 
 const WHATSAPP_API_BASE =
   process.env.NEXT_PUBLIC_WHATSAPP_API_BASE || 'http://localhost:3001';
@@ -80,7 +81,10 @@ export default function Navbar({ onMenuClick }) {
   }, [user?.id]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !hasProductAccess(user)) {
+      setOrderNotifications(0);
+      return;
+    }
     let mounted = true;
     const ordersKey = `aa_orders_last_seen_${user.id}`;
 
@@ -110,7 +114,7 @@ export default function Navbar({ onMenuClick }) {
       window.removeEventListener('aa-badge-refresh', handler);
       clearInterval(timer);
     };
-  }, [user?.id]);
+  }, [user?.id, user?.business_type, user?.admin_tier]);
 
   return (
     <nav

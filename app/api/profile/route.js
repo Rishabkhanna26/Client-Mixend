@@ -4,7 +4,7 @@ import path from 'path';
 import { requireAuth } from '../../../lib/auth-server';
 import { signAuthToken } from '../../../lib/auth';
 import { getAdminById, updateAdminProfile } from '../../../lib/db-helpers';
-import { sanitizeEmail, sanitizeNameUpper } from '../../../lib/sanitize.js';
+import { sanitizeEmail, sanitizeNameUpper, sanitizeText } from '../../../lib/sanitize.js';
 
 export const runtime = 'nodejs';
 
@@ -65,22 +65,24 @@ export async function PUT(request) {
     const body = await request.json();
     const name = typeof body.name === 'string' ? sanitizeNameUpper(body.name) : undefined;
     const email = typeof body.email === 'string' ? sanitizeEmail(body.email) || '' : undefined;
-    const professionRaw = typeof body.profession === 'string' ? body.profession.trim() : undefined;
-    const allowedProfessions = new Set([
-      'astrology',
-      'clinic',
-      'restaurant',
-      'salon',
-      'shop',
-    ]);
-    const profession =
-      user.admin_tier === 'super_admin' &&
-      professionRaw &&
-      allowedProfessions.has(professionRaw)
-        ? professionRaw
+    const businessCategory =
+      typeof body.business_category === 'string'
+        ? sanitizeText(body.business_category, 120)
+        : undefined;
+    const businessTypeRaw =
+      typeof body.business_type === 'string' ? body.business_type.trim().toLowerCase() : undefined;
+    const allowedBusinessTypes = new Set(['product', 'service', 'both']);
+    const businessType =
+      businessTypeRaw && allowedBusinessTypes.has(businessTypeRaw)
+        ? businessTypeRaw
         : undefined;
 
-    const admin = await updateAdminProfile(user.id, { name, email, profession });
+    const admin = await updateAdminProfile(user.id, {
+      name,
+      email,
+      business_category: businessCategory,
+      business_type: businessType,
+    });
     if (!admin) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
@@ -90,7 +92,9 @@ export async function PUT(request) {
       email: admin.email,
       phone: admin.phone,
       admin_tier: admin.admin_tier,
-      profession: admin.profession,
+      business_category: admin.business_category,
+      business_type: admin.business_type,
+      access_expires_at: admin.access_expires_at,
     });
 
     const profilePhotoUrl = await getProfilePhotoUrl(admin.phone);

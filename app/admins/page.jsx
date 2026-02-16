@@ -31,8 +31,11 @@ export default function AdminsPage() {
     phone: '',
     admin_tier: 'client_admin',
     status: 'active',
-    profession: 'astrology',
-    profession_request: '',
+    business_category: '',
+    business_type: 'both',
+    access_duration_value: '',
+    access_duration_unit: 'days',
+    access_expires_at: null,
   });
 
   useEffect(() => {
@@ -98,8 +101,11 @@ export default function AdminsPage() {
       phone: admin.phone || '',
       admin_tier: admin.admin_tier || 'client_admin',
       status: admin.status || 'active',
-      profession: admin.profession || 'astrology',
-      profession_request: admin.profession_request || '',
+      business_category: admin.business_category || '',
+      business_type: admin.business_type || 'both',
+      access_duration_value: '',
+      access_duration_unit: 'days',
+      access_expires_at: admin.access_expires_at || null,
     });
     setEditOpen(true);
   };
@@ -116,7 +122,13 @@ export default function AdminsPage() {
       const result = await updateAdmin(editForm.id, {
         admin_tier: editForm.admin_tier,
         status: editForm.status,
-        profession: editForm.profession,
+        business_category: editForm.business_category,
+        business_type: editForm.business_type,
+        access_duration_value:
+          editForm.access_duration_value === ''
+            ? (editForm.status === 'active' ? 0 : undefined)
+            : Number(editForm.access_duration_value),
+        access_duration_unit: editForm.access_duration_unit,
       });
       if (!result.ok) {
         throw result.error || new Error('Failed to update admin');
@@ -131,7 +143,12 @@ export default function AdminsPage() {
 
   const toggleStatus = async (admin) => {
     const nextStatus = admin.status === 'active' ? 'inactive' : 'active';
-    const result = await updateAdmin(admin.id, { status: nextStatus });
+    const result = await updateAdmin(
+      admin.id,
+      nextStatus === 'active'
+        ? { status: nextStatus, access_duration_value: 0, access_duration_unit: 'days' }
+        : { status: nextStatus }
+    );
     if (!result.ok) {
       setEditError(result.error?.message || 'Failed to update admin');
     }
@@ -188,12 +205,10 @@ export default function AdminsPage() {
     { value: 'active', label: 'Active', icon: faCircleCheck, tone: 'bg-green-50 text-green-700 border-green-200' },
     { value: 'inactive', label: 'Inactive', icon: faBan, tone: 'bg-gray-100 text-gray-700 border-gray-200' },
   ];
-  const professionOptions = [
-    { value: 'astrology', label: 'Astrology' },
-    { value: 'clinic', label: 'Clinic' },
-    { value: 'restaurant', label: 'Restaurant' },
-    { value: 'salon', label: 'Salon' },
-    { value: 'shop', label: 'Retail Shop' },
+  const businessTypeOptions = [
+    { value: 'both', label: 'Products + Services' },
+    { value: 'product', label: 'Products' },
+    { value: 'service', label: 'Services' },
   ];
 
   if (authLoading || (user && user.admin_tier !== 'super_admin')) {
@@ -277,16 +292,18 @@ export default function AdminsPage() {
               <div className="space-y-2 mb-4">
                 <div className="text-sm text-aa-gray">{admin.email || '—'}</div>
                 <div className="text-sm text-aa-gray">{admin.phone || '—'}</div>
-                <div className="text-sm text-aa-gray">Profession: {admin.profession || 'astrology'}</div>
+                <div className="text-sm text-aa-gray">
+                  Business: {admin.business_category || 'General'} ({admin.business_type || 'both'})
+                </div>
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${admin.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}`}></span>
                   <span className="text-sm text-aa-gray">
                     {admin.status === 'active' ? 'Active' : 'Inactive'}
                   </span>
                 </div>
-                {admin.profession_request && (
+                {admin.access_expires_at && (
                   <div className="text-xs text-aa-gray">
-                    Requested: {admin.profession_request}
+                    Access until: {new Date(admin.access_expires_at).toLocaleString()}
                   </div>
                 )}
               </div>
@@ -340,17 +357,25 @@ export default function AdminsPage() {
             <div className="inline-flex flex-wrap items-center gap-2 rounded-full border border-gray-200 bg-white p-1">
               {roleOptions.map((option) => {
                 const active = editForm.admin_tier === option.value;
+                const disablePromoteToSuper =
+                  option.value === 'super_admin' &&
+                  editForm.id !== user?.id &&
+                  editForm.admin_tier !== 'super_admin';
                 return (
                   <button
                     key={option.value}
                     type="button"
-                    onClick={() =>
-                      setEditForm((prev) => ({ ...prev, admin_tier: option.value }))
-                    }
+                    onClick={() => {
+                      if (disablePromoteToSuper) return;
+                      setEditForm((prev) => ({ ...prev, admin_tier: option.value }));
+                    }}
+                    disabled={disablePromoteToSuper}
                     className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                       active
                         ? 'bg-aa-dark-blue text-white'
-                        : 'text-aa-gray hover:text-aa-dark-blue'
+                        : disablePromoteToSuper
+                          ? 'text-aa-gray/50 cursor-not-allowed'
+                          : 'text-aa-gray hover:text-aa-dark-blue'
                     }`}
                   >
                     <span className="inline-flex items-center gap-2">
@@ -363,17 +388,24 @@ export default function AdminsPage() {
             </div>
           </div>
 
+          <Input
+            label="Business Category"
+            value={editForm.business_category}
+            onChange={handleEditChange('business_category')}
+            placeholder="Retail, Shop, Clinic..."
+          />
+
           <div>
-            <label className="block text-sm font-semibold text-aa-text-dark mb-2">Profession</label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {professionOptions.map((option) => {
-                const active = editForm.profession === option.value;
+            <label className="block text-sm font-semibold text-aa-text-dark mb-2">Business Type</label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {businessTypeOptions.map((option) => {
+                const active = editForm.business_type === option.value;
                 return (
                   <button
                     key={option.value}
                     type="button"
                     onClick={() =>
-                      setEditForm((prev) => ({ ...prev, profession: option.value }))
+                      setEditForm((prev) => ({ ...prev, business_type: option.value }))
                     }
                     className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
                       active
@@ -414,20 +446,37 @@ export default function AdminsPage() {
             </div>
           </div>
 
-          {editForm.profession_request && (
-            <div className="rounded-lg border border-aa-orange/30 bg-aa-orange/10 px-4 py-3 text-sm text-aa-dark-blue">
-              Requested: {editForm.profession_request}
-              <div className="mt-2">
-                <Button
-                  variant="outline"
-                  className="text-sm"
-                  onClick={() => setEditForm((prev) => ({ ...prev, profession: prev.profession_request }))}
+          <div className="rounded-lg border border-gray-200 p-3">
+            <p className="text-sm font-semibold text-aa-text-dark mb-2">Access Timer (optional)</p>
+            <p className="text-xs text-aa-gray mb-3">
+              Set how long this admin stays active. Leave empty for no expiry.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                label="Duration"
+                type="number"
+                value={editForm.access_duration_value}
+                onChange={handleEditChange('access_duration_value')}
+                placeholder="30"
+              />
+              <div>
+                <label className="block text-sm font-semibold text-aa-text-dark mb-2">Unit</label>
+                <select
+                  value={editForm.access_duration_unit}
+                  onChange={handleEditChange('access_duration_unit')}
+                  className="w-full rounded-lg border-2 border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-aa-orange sm:py-3 sm:text-base"
                 >
-                  Apply Requested Profession
-                </Button>
+                  <option value="days">Days</option>
+                  <option value="months">Months</option>
+                </select>
               </div>
             </div>
-          )}
+            {editForm.access_expires_at && (
+              <p className="mt-2 text-xs text-aa-gray">
+                Current expiry: {new Date(editForm.access_expires_at).toLocaleString()}
+              </p>
+            )}
+          </div>
 
           <div className="flex flex-col sm:flex-row gap-2 justify-end pt-2">
             <Button variant="outline" onClick={() => setEditOpen(false)}>

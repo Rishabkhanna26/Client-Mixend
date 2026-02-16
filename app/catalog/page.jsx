@@ -6,6 +6,7 @@ import Badge from '../components/common/Badge.jsx';
 import Modal from '../components/common/Modal.jsx';
 import Input from '../components/common/Input.jsx';
 import Loader from '../components/common/Loader.jsx';
+import { useAuth } from '../components/auth/AuthProvider.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faPlus,
@@ -19,6 +20,12 @@ import {
   faTags,
   faClock,
 } from '@fortawesome/free-solid-svg-icons';
+import {
+  canUseCatalogItemType,
+  getCatalogLabel,
+  hasProductAccess,
+  hasServiceAccess,
+} from '../../lib/business.js';
 
 const DEFAULT_SERVICE_PROMPT =
   'Please share your service details (preferred date/time, requirements, and any specific concerns).';
@@ -50,6 +57,7 @@ const parseNumber = (value, fallback = null) => {
 };
 
 export default function CatalogPage() {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -65,6 +73,9 @@ export default function CatalogPage() {
   const [editingItem, setEditingItem] = useState(null);
   const [form, setForm] = useState(buildEmptyForm());
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const canAddProducts = hasProductAccess(user);
+  const canAddServices = hasServiceAccess(user);
+  const catalogLabel = getCatalogLabel(user);
 
   const fetchItems = async ({ bustCache = false } = {}) => {
     setLoading(true);
@@ -127,6 +138,10 @@ export default function CatalogPage() {
   }, [items]);
 
   const openCreateModal = (type) => {
+    if (!canUseCatalogItemType(user, type)) {
+      setError(`You cannot add ${type} items for your selected business type.`);
+      return;
+    }
     setEditingItem(null);
     setForm(buildEmptyForm(type));
     setShowModal(true);
@@ -155,6 +170,12 @@ export default function CatalogPage() {
     setSaving(true);
     setNotice('');
     setError('');
+
+    if (!canUseCatalogItemType(user, form.item_type)) {
+      setSaving(false);
+      setError(`You cannot add ${form.item_type} items for your selected business type.`);
+      return;
+    }
 
     const payload = {
       item_type: form.item_type,
@@ -220,6 +241,11 @@ export default function CatalogPage() {
     setSaving(true);
     setNotice('');
     setError('');
+    if (!canUseCatalogItemType(user, item?.item_type)) {
+      setSaving(false);
+      setError(`You cannot add ${item?.item_type || 'this'} item for your selected business type.`);
+      return;
+    }
     try {
       const response = await fetch('/api/catalog', {
         method: 'POST',
@@ -323,16 +349,21 @@ export default function CatalogPage() {
     <div className="space-y-6" data-testid="catalog-page">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-aa-dark-blue mb-2">Products & Services</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-aa-dark-blue mb-2">{catalogLabel}</h1>
           <p className="text-aa-gray">Manage what WhatsApp users see when they ask about offerings.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button
             variant="primary"
             icon={<FontAwesomeIcon icon={faPlus} style={{ fontSize: 16 }} />}
-            onClick={() => openCreateModal('service')}
+            onClick={() => openCreateModal(canAddServices ? 'service' : 'product')}
+            disabled={!canAddServices && !canAddProducts}
           >
-            Add Product / Service
+            {canAddServices && canAddProducts
+              ? 'Add Product / Service'
+              : canAddServices
+              ? 'Add Service'
+              : 'Add Product'}
           </Button>
         </div>
       </div>
@@ -391,8 +422,8 @@ export default function CatalogPage() {
                 className="px-4 py-2 border-2 border-gray-200 rounded-lg text-sm"
               >
                 <option value="all">All</option>
-                <option value="service">Services</option>
-                <option value="product">Products</option>
+                {canAddServices && <option value="service">Services</option>}
+                {canAddProducts && <option value="product">Products</option>}
               </select>
             </div>
             <div>
@@ -434,8 +465,16 @@ export default function CatalogPage() {
               <h3 className="text-lg font-bold text-aa-dark-blue">No items found</h3>
               <p className="text-aa-gray text-sm mt-2">Add your first product or service to start building the WhatsApp menu.</p>
               <div className="flex justify-center gap-3 mt-4">
-                <Button variant="outline" onClick={() => openCreateModal('service')}>Add Service</Button>
-                <Button variant="primary" onClick={() => openCreateModal('product')}>Add Product</Button>
+                {canAddServices && (
+                  <Button variant="outline" onClick={() => openCreateModal('service')}>
+                    Add Service
+                  </Button>
+                )}
+                {canAddProducts && (
+                  <Button variant="primary" onClick={() => openCreateModal('product')}>
+                    Add Product
+                  </Button>
+                )}
               </div>
             </Card>
           ) : (
@@ -541,22 +580,26 @@ export default function CatalogPage() {
             <h3 className="text-lg font-bold text-aa-dark-blue mb-2">WhatsApp Preview</h3>
             <p className="text-sm text-aa-gray mb-4">Top items that will appear in WhatsApp menus.</p>
             <div className="space-y-3">
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <p className="text-xs font-semibold text-aa-gray uppercase mb-2">Services</p>
-                <ul className="text-sm text-aa-text-dark space-y-1">
-                  {buildPreviewLines('service').map((line, idx) => (
-                    <li key={`service-preview-${idx}`}>{line}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <p className="text-xs font-semibold text-aa-gray uppercase mb-2">Products</p>
-                <ul className="text-sm text-aa-text-dark space-y-1">
-                  {buildPreviewLines('product').map((line, idx) => (
-                    <li key={`product-preview-${idx}`}>{line}</li>
-                  ))}
-                </ul>
-              </div>
+              {canAddServices && (
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-xs font-semibold text-aa-gray uppercase mb-2">Services</p>
+                  <ul className="text-sm text-aa-text-dark space-y-1">
+                    {buildPreviewLines('service').map((line, idx) => (
+                      <li key={`service-preview-${idx}`}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {canAddProducts && (
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-xs font-semibold text-aa-gray uppercase mb-2">Products</p>
+                  <ul className="text-sm text-aa-text-dark space-y-1">
+                    {buildPreviewLines('product').map((line, idx) => (
+                      <li key={`product-preview-${idx}`}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </Card>
         </div>
@@ -589,12 +632,12 @@ export default function CatalogPage() {
                           details_prompt: DEFAULT_SERVICE_PROMPT,
                         }))
                       }
-                      disabled={Boolean(editingItem)}
+                      disabled={Boolean(editingItem) || !canAddServices}
                       className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
                         form.item_type === 'service'
                           ? 'bg-aa-dark-blue text-white'
                           : 'text-aa-gray hover:text-aa-dark-blue'
-                      } ${editingItem ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      } ${editingItem || !canAddServices ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                       Service
                     </button>
@@ -607,12 +650,12 @@ export default function CatalogPage() {
                           details_prompt: DEFAULT_PRODUCT_PROMPT,
                         }))
                       }
-                      disabled={Boolean(editingItem)}
+                      disabled={Boolean(editingItem) || !canAddProducts}
                       className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
                         form.item_type === 'product'
                           ? 'bg-aa-dark-blue text-white'
                           : 'text-aa-gray hover:text-aa-dark-blue'
-                      } ${editingItem ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      } ${editingItem || !canAddProducts ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                       Product
                     </button>

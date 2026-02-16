@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCalendarCheck,
@@ -25,8 +25,10 @@ import Card from '../components/common/Card.jsx';
 import Modal from '../components/common/Modal.jsx';
 import Input from '../components/common/Input.jsx';
 import Button from '../components/common/Button.jsx';
+import { getBusinessTypeLabel, hasServiceAccess } from '../../lib/business.js';
 
 export default function AppointmentsPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const [appointments, setAppointments] = useState([]);
@@ -71,35 +73,20 @@ export default function AppointmentsPage() {
     payment_services: [],
   });
 
-  const label = useMemo(() => {
-    const appointmentProfessions = new Set(['astrology', 'clinic', 'salon', 'gym', 'spa', 'doctor', 'consultant']);
-    const bookingProfessions = new Set([
-      'restaurant',
-      'hotel',
-      'resort',
-      'hostel',
-      'motel',
-      'inn',
-      'lodge',
-      'guesthouse',
-      'cafe',
-      'café',
-    ]);
-    if (!user?.profession) return 'Bookings';
-    if (appointmentProfessions.has(user.profession) && !bookingProfessions.has(user.profession)) {
-      return 'Appointments';
-    }
-    return 'Bookings';
-  }, [user?.profession]);
+  const hasAppointmentsAccess = Boolean(user?.id) && hasServiceAccess(user);
+  const label = useMemo(() => 'Appointments', []);
   const labelLower = label.toLowerCase();
-  const isSalon = user?.profession === 'salon';
 
   useEffect(() => {
+    if (!hasAppointmentsAccess) {
+      setLoading(false);
+      return undefined;
+    }
     const handle = setTimeout(() => {
       fetchAppointments({ reset: true, nextOffset: 0, searchTerm: search, status: filterStatus });
     }, 300);
     return () => clearTimeout(handle);
-  }, [search, filterStatus]);
+  }, [filterStatus, hasAppointmentsAccess, search]);
 
   useEffect(() => {
     if (autoOpened) return;
@@ -403,7 +390,7 @@ export default function AppointmentsPage() {
       status: appt.status || 'booked',
       appointment_type: appt.appointment_type || '',
       start_time: toInputDateTime(appt.start_time),
-      end_time: isSalon ? '' : toInputDateTime(appt.end_time),
+      end_time: toInputDateTime(appt.end_time),
       payment_total: totalValue,
       payment_paid: paidValue,
       payment_paid_mode: paidMode,
@@ -428,7 +415,7 @@ export default function AppointmentsPage() {
       status: 'booked',
       appointment_type: '',
       start_time: toInputDateTime(now),
-      end_time: isSalon ? '' : toInputDateTime(end),
+      end_time: toInputDateTime(end),
       payment_total: '',
       payment_paid: '',
       payment_paid_mode: '',
@@ -555,16 +542,11 @@ export default function AppointmentsPage() {
       if (editForm.end_time) {
         payload.end_time = new Date(editForm.end_time).toISOString();
       }
-      if (isSalon && payload.start_time) {
-        payload.end_time = payload.start_time;
-      }
       if (editMode === 'create' && (!payload.start_time || !payload.end_time)) {
         if (!payload.start_time) {
           throw new Error('Start time is required.');
         }
-        if (!isSalon) {
-          throw new Error('End time is required.');
-        }
+        throw new Error('End time is required.');
       }
 
       let response;
@@ -822,6 +804,31 @@ export default function AppointmentsPage() {
     });
     return base;
   }, [appointments]);
+
+  if (!hasAppointmentsAccess) {
+    return (
+      <div className="space-y-6">
+        <Card className="text-center">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-aa-orange/10 flex items-center justify-center mb-4">
+            <FontAwesomeIcon icon={faCalendarCheck} className="text-aa-orange" style={{ fontSize: 28 }} />
+          </div>
+          <h1 className="text-2xl font-bold text-aa-dark-blue mb-2">Appointments are not enabled</h1>
+          <p className="text-aa-gray">
+            Appointments are available only for service-based businesses. Your current type is{' '}
+            <span className="font-semibold">{getBusinessTypeLabel(user)}</span>.
+          </p>
+          <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+            <Button variant="primary" onClick={() => router.push('/settings')}>
+              Update Business Type
+            </Button>
+            <Button variant="outline" onClick={() => router.push('/catalog')}>
+              View Products & Services
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -1169,19 +1176,12 @@ export default function AppointmentsPage() {
               value={editForm.start_time}
               onChange={handleEditChange('start_time')}
             />
-            {!isSalon && (
-              <Input
-                label="End Time"
-                type="datetime-local"
-                value={editForm.end_time}
-                onChange={handleEditChange('end_time')}
-              />
-            )}
-            {isSalon && (
-              <p className="text-xs text-aa-gray md:col-span-1">
-                End time is optional for salons.
-              </p>
-            )}
+            <Input
+              label="End Time"
+              type="datetime-local"
+              value={editForm.end_time}
+              onChange={handleEditChange('end_time')}
+            />
           </div>
 
           <div className="rounded-xl border border-gray-200 p-4 space-y-4">

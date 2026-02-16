@@ -17,17 +17,17 @@ export async function PATCH(req, context) {
     const body = await req.json();
     const admin_tier = body?.admin_tier;
     const status = body?.status;
-    const profession = body?.profession;
+    const business_type = body?.business_type;
+    const business_category = body?.business_category;
+    const access_duration_value = Number(body?.access_duration_value || 0);
+    const access_duration_unit =
+      String(body?.access_duration_unit || 'days').toLowerCase() === 'months'
+        ? 'months'
+        : 'days';
 
     const allowedTiers = new Set(['super_admin', 'client_admin']);
     const allowedStatus = new Set(['active', 'inactive']);
-    const allowedProfessions = new Set([
-      'astrology',
-      'clinic',
-      'restaurant',
-      'salon',
-      'shop',
-    ]);
+    const allowedBusinessTypes = new Set(['product', 'service', 'both']);
 
     if (admin_tier && !allowedTiers.has(admin_tier)) {
       return Response.json({ success: false, error: 'Invalid admin role' }, { status: 400 });
@@ -35,8 +35,20 @@ export async function PATCH(req, context) {
     if (status && !allowedStatus.has(status)) {
       return Response.json({ success: false, error: 'Invalid status' }, { status: 400 });
     }
-    if (profession && !allowedProfessions.has(profession)) {
-      return Response.json({ success: false, error: 'Invalid profession' }, { status: 400 });
+    if (business_type && !allowedBusinessTypes.has(business_type)) {
+      return Response.json({ success: false, error: 'Invalid business type' }, { status: 400 });
+    }
+
+    const target = await getAdminById(adminId);
+    if (!target) {
+      return Response.json({ success: false, error: 'Admin not found' }, { status: 404 });
+    }
+
+    if (admin_tier === 'super_admin' && target.admin_tier !== 'super_admin') {
+      return Response.json(
+        { success: false, error: 'Promoting another admin to super admin is not allowed.' },
+        { status: 400 }
+      );
     }
 
     if (adminId === user.id) {
@@ -48,7 +60,34 @@ export async function PATCH(req, context) {
       }
     }
 
-    const updated = await updateAdminAccess(adminId, { admin_tier, status, profession });
+    let access_expires_at = undefined;
+    const hasDuration =
+      Number.isFinite(access_duration_value) && access_duration_value > 0;
+
+    if (status === 'inactive') {
+      access_expires_at = null;
+    } else if (status === 'active' || hasDuration) {
+      if (hasDuration) {
+        const now = new Date();
+        const expires = new Date(now);
+        if (access_duration_unit === 'months') {
+          expires.setMonth(expires.getMonth() + access_duration_value);
+        } else {
+          expires.setDate(expires.getDate() + access_duration_value);
+        }
+        access_expires_at = expires.toISOString();
+      } else if (Object.prototype.hasOwnProperty.call(body, 'access_duration_value')) {
+        access_expires_at = null;
+      }
+    }
+
+    const updated = await updateAdminAccess(adminId, {
+      admin_tier,
+      status,
+      business_type,
+      business_category: typeof business_category === 'string' ? business_category : undefined,
+      access_expires_at,
+    });
     if (!updated) {
       return Response.json({ success: false, error: 'Admin not found' }, { status: 404 });
     }

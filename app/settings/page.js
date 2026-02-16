@@ -27,22 +27,18 @@ import {
   storeTheme,
 } from '../../lib/appearance.js';
 import { getBackendJwt } from '../../lib/backend-auth.js';
+import { getBusinessTypeLabel } from '../../lib/business.js';
 
 const WHATSAPP_API_BASE =
   process.env.NEXT_PUBLIC_WHATSAPP_API_BASE || 'http://localhost:3001';
 const WHATSAPP_SOCKET_URL =
   process.env.NEXT_PUBLIC_WHATSAPP_SOCKET_URL || WHATSAPP_API_BASE;
 
-const PROFESSION_OPTIONS = [
-  { value: 'astrology', label: 'Astrology' },
-  { value: 'clinic', label: 'Clinic' },
-  { value: 'restaurant', label: 'Restaurant' },
-  { value: 'salon', label: 'Salon' },
-  { value: 'shop', label: 'Retail Shop' },
+const BUSINESS_TYPE_OPTIONS = [
+  { value: 'product', label: 'Product-based' },
+  { value: 'service', label: 'Service-based' },
+  { value: 'both', label: 'Product + Service' },
 ];
-
-const getProfessionLabel = (value) =>
-  PROFESSION_OPTIONS.find((option) => option.value === value)?.label || 'Astrology';
 
 export default function SettingsPage() {
   const { user, loading: authLoading, refresh } = useAuth();
@@ -51,9 +47,8 @@ export default function SettingsPage() {
     name: '',
     email: '',
     phone: '',
-    profession: 'astrology',
-    profession_request: '',
-    profession_requested_at: null,
+    business_category: '',
+    business_type: 'both',
   });
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [profilePhotoPreview, setProfilePhotoPreview] = useState(null);
@@ -66,8 +61,6 @@ export default function SettingsPage() {
   const [whatsappQrVersion, setWhatsappQrVersion] = useState(0);
   const whatsappQrJobRef = useRef(0);
   const [whatsappActionStatus, setWhatsappActionStatus] = useState('');
-  const [professionRequest, setProfessionRequest] = useState('astrology');
-  const [professionRequestStatus, setProfessionRequestStatus] = useState('');
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState('');
   const [passwordForm, setPasswordForm] = useState({
@@ -81,6 +74,7 @@ export default function SettingsPage() {
     phone: '',
     businessName: '',
     category: '',
+    businessType: 'both',
   });
 
   const updatePasswordField = (field) => (event) =>
@@ -165,11 +159,9 @@ export default function SettingsPage() {
         name: user.name || prev.name,
         email: user.email || prev.email,
         phone: user.phone || prev.phone,
-        profession: user.profession || prev.profession,
-        profession_request: user.profession_request || prev.profession_request,
-        profession_requested_at: user.profession_requested_at || prev.profession_requested_at,
+        business_category: user.business_category || prev.business_category,
+        business_type: user.business_type || prev.business_type,
       }));
-      setProfessionRequest(user.profession_request || user.profession || 'astrology');
     }
   }, [user]);
 
@@ -191,14 +183,10 @@ export default function SettingsPage() {
           name: data.data?.name || '',
           email: data.data?.email || '',
           phone: data.data?.phone || '',
-          profession: data.data?.profession || 'astrology',
-          profession_request: data.data?.profession_request || '',
-          profession_requested_at: data.data?.profession_requested_at || null,
+          business_category: data.data?.business_category || '',
+          business_type: data.data?.business_type || 'both',
         });
         setProfilePhotoPreview(data.data?.profile_photo_url || null);
-        setProfessionRequest(
-          data.data?.profession_request || data.data?.profession || 'astrology'
-        );
         if (data.data?.whatsapp_number || data.data?.whatsapp_name) {
           setWhatsappConfig((prev) => ({
             ...prev,
@@ -225,9 +213,10 @@ export default function SettingsPage() {
   useEffect(() => {
     setWhatsappConfig((prev) => ({
       ...prev,
-      category: getProfessionLabel(profile.profession),
+      category: profile.business_category || 'General',
+      businessType: profile.business_type || 'both',
     }));
-  }, [profile.profession]);
+  }, [profile.business_category, profile.business_type]);
 
   const fetchWhatsAppStatus = useCallback(async (isMountedRef = { current: true }) => {
     try {
@@ -522,19 +511,17 @@ export default function SettingsPage() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between rounded-xl bg-white/90 px-3 py-2">
-                        <span className="text-sm text-aa-gray">Current Profession</span>
+                        <span className="text-sm text-aa-gray">Business Category</span>
                         <span className="text-sm font-semibold text-aa-text-dark">
-                          {getProfessionLabel(profile.profession)}
+                          {profile.business_category || 'General'}
                         </span>
                       </div>
-                      {profile.profession_request && (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-                          <p className="text-xs text-amber-700">Pending change request</p>
-                          <p className="text-sm font-semibold text-amber-800">
-                            {getProfessionLabel(profile.profession_request)}
-                          </p>
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between rounded-xl bg-white/90 px-3 py-2">
+                        <span className="text-sm text-aa-gray">Business Type</span>
+                        <span className="text-sm font-semibold text-aa-text-dark">
+                          {getBusinessTypeLabel(profile.business_type)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -572,93 +559,46 @@ export default function SettingsPage() {
                         placeholder="Enter phone number"
                         disabled
                       />
-                      {user?.admin_tier === 'super_admin' ? (
-                        <div className="w-full">
-                          <label className="mb-2 block text-sm font-semibold text-aa-text-dark">
-                            Profession <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            value={profile.profession}
-                            onChange={(event) =>
-                              setProfile((prev) => ({ ...prev, profession: event.target.value }))
-                            }
-                            className="w-full rounded-lg border-2 border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-aa-orange sm:py-3 sm:text-base"
-                          >
-                            {PROFESSION_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ) : (
-                        <div className="w-full">
-                          <label className="mb-2 block text-sm font-semibold text-aa-text-dark">
-                            Profession
-                          </label>
-                          <div className="rounded-lg border-2 border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-aa-text-dark sm:py-3 sm:text-base">
-                            {getProfessionLabel(profile.profession)}
-                          </div>
-                        </div>
-                      )}
+                      <div className="w-full">
+                        <label className="mb-2 block text-sm font-semibold text-aa-text-dark">
+                          Business Category <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          value={profile.business_category}
+                          onChange={(event) =>
+                            setProfile((prev) => ({ ...prev, business_category: event.target.value }))
+                          }
+                          placeholder="Shop, Retail, Cracker..."
+                          className="w-full rounded-lg border-2 border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-aa-orange sm:py-3 sm:text-base"
+                        />
+                        <p className="mt-1 text-xs text-aa-gray">
+                          Add your business category that customers understand quickly.
+                        </p>
+                      </div>
+                      <div className="w-full">
+                        <label className="mb-2 block text-sm font-semibold text-aa-text-dark">
+                          Business Type <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={profile.business_type}
+                          onChange={(event) =>
+                            setProfile((prev) => ({ ...prev, business_type: event.target.value }))
+                          }
+                          className="w-full rounded-lg border-2 border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-aa-orange sm:py-3 sm:text-base"
+                        >
+                          {BUSINESS_TYPE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-aa-gray">
+                          Product-based shows orders, service-based shows appointments, both shows both.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
-
-                {user?.admin_tier !== 'super_admin' && (
-                  <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 sm:p-5">
-                    <p className="text-sm font-semibold text-aa-text-dark">Request Profession Change</p>
-                    <p className="mt-1 text-xs text-aa-gray">
-                      Send a request to super admin for business type change.
-                    </p>
-                    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <select
-                        value={professionRequest}
-                        onChange={(event) => setProfessionRequest(event.target.value)}
-                        className="w-full rounded-lg border-2 border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-aa-orange sm:w-auto sm:min-w-[220px] sm:py-3 sm:text-base"
-                      >
-                        {PROFESSION_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <Button
-                        variant="outline"
-                        className="w-full sm:w-auto"
-                        onClick={async () => {
-                          try {
-                            setProfessionRequestStatus('');
-                            const response = await fetch('/api/profile/profession-request', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              credentials: 'include',
-                              body: JSON.stringify({ profession: professionRequest }),
-                            });
-                            const data = await response.json();
-                            if (!response.ok) {
-                              throw new Error(data.error || 'Failed to request change');
-                            }
-                            setProfile((prev) => ({
-                              ...prev,
-                              profession_request: data.data?.profession_request || professionRequest,
-                              profession_requested_at:
-                                data.data?.profession_requested_at || new Date().toISOString(),
-                            }));
-                            setProfessionRequestStatus('Request sent to super admin.');
-                          } catch (error) {
-                            setProfessionRequestStatus(error.message);
-                          }
-                        }}
-                      >
-                        Request Change
-                      </Button>
-                    </div>
-                    {professionRequestStatus && (
-                      <p className="mt-2 text-sm text-aa-gray">{professionRequestStatus}</p>
-                    )}
-                  </div>
-                )}
 
                 <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="order-2 sm:order-1">
@@ -690,13 +630,9 @@ export default function SettingsPage() {
                             name: data.data?.name || '',
                             email: data.data?.email || '',
                             phone: data.data?.phone || '',
-                            profession: data.data?.profession || 'astrology',
-                            profession_request: data.data?.profession_request || '',
-                            profession_requested_at: data.data?.profession_requested_at || null,
+                            business_category: data.data?.business_category || '',
+                            business_type: data.data?.business_type || 'both',
                           });
-                          setProfessionRequest(
-                            data.data?.profession_request || data.data?.profession || 'astrology'
-                          );
                           setProfilePhoto(null);
                           setProfilePhotoPreview(data.data?.profile_photo_url || null);
                           setSaveStatus('');
@@ -739,9 +675,8 @@ export default function SettingsPage() {
                             body: JSON.stringify({
                               name: profile.name,
                               email: profile.email,
-                              ...(user?.admin_tier === 'super_admin'
-                                ? { profession: profile.profession }
-                                : {}),
+                              business_category: profile.business_category,
+                              business_type: profile.business_type,
                             }),
                           });
                           const contentType = response.headers.get('content-type') || '';
@@ -757,13 +692,9 @@ export default function SettingsPage() {
                             name: data.data?.name || '',
                             email: data.data?.email || '',
                             phone: data.data?.phone || '',
-                            profession: data.data?.profession || 'astrology',
-                            profession_request: data.data?.profession_request || '',
-                            profession_requested_at: data.data?.profession_requested_at || null,
+                            business_category: data.data?.business_category || '',
+                            business_type: data.data?.business_type || 'both',
                           });
-                          setProfessionRequest(
-                            data.data?.profession_request || data.data?.profession || 'astrology'
-                          );
                           await refresh();
                           setSaveStatus('Profile updated.');
                           setTimeout(() => setSaveStatus(''), 2000);
@@ -1000,8 +931,22 @@ export default function SettingsPage() {
                         label="Business Category"
                         value={whatsappConfig.category}
                         disabled
-                        className="sm:col-span-2"
                       />
+                      <div className="sm:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <p className="text-xs text-aa-gray">
+                          Category describes your domain like retail, shop, crackers, clinic, etc.
+                        </p>
+                        <div>
+                          <Input
+                            label="Business Type"
+                            value={getBusinessTypeLabel(whatsappConfig.businessType)}
+                            disabled
+                          />
+                          <p className="mt-1 text-xs text-aa-gray">
+                            Type controls whether orders, appointments, or both are shown.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
 

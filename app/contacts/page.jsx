@@ -27,6 +27,7 @@ export default function ContactsPage() {
   const [chatDraft, setChatDraft] = useState('');
   const [chatSending, setChatSending] = useState(false);
   const [chatSendError, setChatSendError] = useState('');
+  const [automationUpdatingId, setAutomationUpdatingId] = useState(null);
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -201,6 +202,32 @@ export default function ContactsPage() {
     }
   };
 
+  const toggleContactAutomation = async (user) => {
+    if (!user?.id || automationUpdatingId === user.id) return;
+    const nextValue = !Boolean(user.automation_disabled);
+    setAutomationUpdatingId(user.id);
+    try {
+      const response = await fetch(`/api/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ automation_disabled: nextValue }),
+      });
+      const data = await response.json();
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Failed to update automation setting');
+      }
+      const updated = data?.data || {};
+      setUsers((prev) => prev.map((item) => (item.id === user.id ? { ...item, ...updated } : item)));
+      setSelectedUser((prev) => (prev?.id === user.id ? { ...prev, ...updated } : prev));
+      setChatUser((prev) => (prev?.id === user.id ? { ...prev, ...updated } : prev));
+    } catch (error) {
+      window.alert(error.message || 'Failed to update automation setting.');
+    } finally {
+      setAutomationUpdatingId(null);
+    }
+  };
+
   const filteredUsers = users;
 
   if (loading) {
@@ -264,6 +291,11 @@ export default function ContactsPage() {
                 )}
                 <div className="mt-3 pt-3 border-t">
                   <p className="text-xs text-gray-500">Assigned to: <span className="font-semibold">{user.admin_name}</span></p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Automation: <span className={`font-semibold ${user.automation_disabled ? 'text-red-600' : 'text-green-600'}`}>
+                      {user.automation_disabled ? 'Disabled' : 'Enabled'}
+                    </span>
+                  </p>
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t flex gap-2">
@@ -280,6 +312,21 @@ export default function ContactsPage() {
                   View
                 </button>
               </div>
+              <button
+                className={`mt-2 w-full px-3 py-1 border rounded text-sm font-semibold transition ${
+                  user.automation_disabled
+                    ? 'border-green-600 text-green-600 hover:bg-green-50'
+                    : 'border-red-600 text-red-600 hover:bg-red-50'
+                }`}
+                onClick={() => toggleContactAutomation(user)}
+                disabled={automationUpdatingId === user.id}
+              >
+                {automationUpdatingId === user.id
+                  ? 'Updating...'
+                  : user.automation_disabled
+                    ? 'Enable Automation'
+                    : 'Disable Automation'}
+              </button>
             </div>
           ))
         )}
@@ -316,8 +363,27 @@ export default function ContactsPage() {
               <div>
                 <p className="text-xl font-bold text-aa-dark-blue">{selectedUser.name || 'Unknown'}</p>
                 <p className="text-sm text-aa-gray">{selectedUser.admin_name ? `Assigned to ${selectedUser.admin_name}` : 'Unassigned'}</p>
+                <p className={`text-xs mt-1 font-semibold ${selectedUser.automation_disabled ? 'text-red-600' : 'text-green-600'}`}>
+                  Automation {selectedUser.automation_disabled ? 'Disabled' : 'Enabled'}
+                </p>
               </div>
             </div>
+
+            <button
+              className={`w-full px-3 py-2 border rounded text-sm font-semibold transition ${
+                selectedUser.automation_disabled
+                  ? 'border-green-600 text-green-600 hover:bg-green-50'
+                  : 'border-red-600 text-red-600 hover:bg-red-50'
+              }`}
+              onClick={() => toggleContactAutomation(selectedUser)}
+              disabled={automationUpdatingId === selectedUser.id}
+            >
+              {automationUpdatingId === selectedUser.id
+                ? 'Updating...'
+                : selectedUser.automation_disabled
+                  ? 'Enable Automation for This Contact'
+                  : 'Disable Automation for This Contact'}
+            </button>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-4 border border-gray-200 rounded-lg">

@@ -1,5 +1,6 @@
 import { requireAuth } from '../../../../lib/auth-server';
 import { updateOrder } from '../../../../lib/db-helpers';
+import { hasProductAccess } from '../../../../lib/business.js';
 
 const ALLOWED_STATUSES = new Set([
   'new',
@@ -24,6 +25,12 @@ const ALLOWED_PAYMENT_METHODS = new Set(['cash', 'card', 'upi', 'bank', 'wallet'
 export async function PATCH(request, context) {
   try {
     const authUser = await requireAuth();
+    if (!hasProductAccess(authUser)) {
+      return Response.json(
+        { success: false, error: 'Orders are disabled for this business type.' },
+        { status: 403 }
+      );
+    }
     const params = await context.params;
     const orderId = Number(params?.id);
     if (!Number.isFinite(orderId)) {
@@ -89,7 +96,8 @@ export async function PATCH(request, context) {
       return Response.json({ success: false, error: 'No updates provided' }, { status: 400 });
     }
 
-    const updated = await updateOrder(orderId, updates, authUser.id);
+    const adminScopeId = authUser.admin_tier === 'super_admin' ? null : authUser.id;
+    const updated = await updateOrder(orderId, updates, adminScopeId);
     if (!updated) {
       return Response.json({ success: false, error: 'Order not found' }, { status: 404 });
     }

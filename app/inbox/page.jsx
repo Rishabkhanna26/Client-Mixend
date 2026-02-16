@@ -158,11 +158,12 @@ export default function InboxPage() {
   }, [user?.id]);
 
   useEffect(() => {
+    if (!user?.id) return;
     const handle = setTimeout(() => {
       fetchMessages({ reset: true, nextOffset: 0, searchTerm: search });
     }, 300);
     return () => clearTimeout(handle);
-  }, [search]);
+  }, [search, user?.id]);
 
   useEffect(() => {
     if (!selectedThread) return;

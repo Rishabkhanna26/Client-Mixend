@@ -117,7 +117,8 @@ export async function GET(request) {
     const connection = await getConnection();
     try {
       const [existing] = await connection.query(
-        `SELECT id, name, email, phone, admin_tier, status, profession
+        `SELECT id, name, email, phone, admin_tier, status,
+                business_category, business_type
          FROM admins
          WHERE LOWER(email) = ?
          LIMIT 1`,
@@ -128,16 +129,21 @@ export async function GET(request) {
       if (!admin) {
         const placeholderPhone = buildPlaceholderPhone('google', profile?.sub || email);
         const [rows] = await connection.query(
-          `INSERT INTO admins (name, phone, email, admin_tier, status, profession)
-           VALUES (?, ?, ?, 'client_admin', 'active', 'astrology')
-           RETURNING id, name, email, phone, admin_tier, status, profession`,
+          `INSERT INTO admins (
+             name, phone, email, admin_tier, status,
+             business_category, business_type
+           )
+           VALUES (?, ?, ?, 'client_admin', 'inactive', 'general', 'both')
+           RETURNING id, name, email, phone, admin_tier, status, business_category, business_type`,
           [displayName, placeholderPhone, email]
         );
         admin = rows[0];
       }
 
       if (!admin || admin.status !== 'active') {
-        throw new Error('Account is inactive');
+        const response = NextResponse.redirect(buildRedirectUrl(request, '/login?oauth=pending_approval'));
+        clearStateCookie(response);
+        return response;
       }
 
       const jwtToken = signAuthToken({
@@ -146,7 +152,8 @@ export async function GET(request) {
         email: admin.email,
         phone: admin.phone,
         admin_tier: admin.admin_tier,
-        profession: admin.profession,
+        business_category: admin.business_category,
+        business_type: admin.business_type,
       });
 
       const response = NextResponse.redirect(buildRedirectUrl(request, '/'));

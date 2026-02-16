@@ -222,9 +222,11 @@ async function createSchema(client) {
         CHECK (admin_tier IN ('super_admin', 'client_admin')),
       status VARCHAR(20) NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'inactive')),
-      profession VARCHAR(50) DEFAULT 'astrology',
-      profession_request VARCHAR(50),
-      profession_requested_at TIMESTAMPTZ,
+      business_category VARCHAR(120),
+      business_type VARCHAR(20) DEFAULT 'both'
+        CHECK (business_type IN ('product', 'service', 'both')),
+      access_expires_at TIMESTAMPTZ,
+      automation_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       whatsapp_number VARCHAR(20),
       whatsapp_name VARCHAR(100),
       whatsapp_connected_at TIMESTAMPTZ,
@@ -248,6 +250,7 @@ async function createSchema(client) {
       name VARCHAR(100),
       email VARCHAR(150),
       assigned_admin_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+      automation_disabled BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -308,7 +311,6 @@ async function createSchema(client) {
       id SERIAL PRIMARY KEY,
       user_id INT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
       admin_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
-      profession VARCHAR(50),
       appointment_type VARCHAR(100),
       start_time TIMESTAMPTZ NOT NULL,
       end_time TIMESTAMPTZ NOT NULL,
