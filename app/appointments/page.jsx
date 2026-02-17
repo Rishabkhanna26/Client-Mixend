@@ -844,10 +844,15 @@ export default function AppointmentsPage() {
   return (
     <div className="p-4 sm:p-6">
       <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <FontAwesomeIcon icon={faCalendarCheck} className="text-aa-orange" style={{ fontSize: 32 }} />
-          {label}
-        </h1>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <FontAwesomeIcon icon={faCalendarCheck} className="text-aa-orange" style={{ fontSize: 32 }} />
+            {label}
+          </h1>
+          <Button variant="primary" onClick={openCreate}>
+            Create {label.slice(0, -1)}
+          </Button>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
           {[
@@ -880,9 +885,6 @@ export default function AppointmentsPage() {
             />
           </div>
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-            <Button variant="primary" onClick={openCreate}>
-              Create {label.slice(0, -1)}
-            </Button>
             <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-1">
               {filterStatusOptions.map((option) => {
                 const active = filterStatus === option.value;

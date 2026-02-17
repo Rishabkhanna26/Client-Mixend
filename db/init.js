@@ -72,33 +72,67 @@ async function sendPasswordEmail(to, password) {
 }
 
 async function ensureDefaultSuperAdmin(client) {
-  const { rows: existingSuper } = await client.query(
-    `SELECT id FROM admins WHERE admin_tier = 'super_admin' LIMIT 1`
+  const { rows: superAdmins } = await client.query(
+    `SELECT id, email, password_hash
+     FROM admins
+     WHERE admin_tier = 'super_admin'
+     ORDER BY id ASC`
   );
 
-  if (existingSuper.length > 0) return;
+  // If any super admin has no password, set one and send exactly one temporary email.
+  if (superAdmins.length > 0) {
+    const target = superAdmins.find((row) => !row.password_hash);
+    if (!target) {
+      console.log("✅ Super admin already existed with a password.");
+      return;
+    }
+
+    const plainPassword = generatePassword();
+    await client.query(
+      `UPDATE admins SET password_hash = $1 WHERE id = $2`,
+      [hashPassword(plainPassword), target.id]
+    );
+
+    const recipientEmail = target.email || DEFAULT_SUPER_ADMIN.email;
+    try {
+      const sent = await sendPasswordEmail(recipientEmail, plainPassword);
+      if (sent) {
+        console.log("✅ Super admin password emailed.");
+      } else {
+        console.warn("⚠️ Email not sent. Temporary super admin password:", plainPassword);
+      }
+    } catch (err) {
+      console.error("❌ Failed to send super admin email:", err.message);
+      console.warn("⚠️ Temporary super admin password:", plainPassword);
+    }
+    return;
+  }
 
   const { rows: existing } = await client.query(
-    `SELECT id, password_hash, admin_tier FROM admins WHERE email = $1 OR phone = $2 LIMIT 1`,
+    `SELECT id, email, password_hash, admin_tier
+     FROM admins
+     WHERE email = $1 OR phone = $2
+     LIMIT 1`,
     [DEFAULT_SUPER_ADMIN.email, DEFAULT_SUPER_ADMIN.phone]
   );
 
+  let recipientEmail = DEFAULT_SUPER_ADMIN.email;
   let passwordToSend = null;
 
   if (existing.length > 0) {
     const record = existing[0];
+    recipientEmail = record.email || recipientEmail;
     const updates = [];
     const values = [];
 
     if (record.admin_tier !== "super_admin") {
-      updates.push("admin_tier = 'super_admin'");
+      updates.push(`admin_tier = 'super_admin'`);
     }
 
     if (!record.password_hash) {
-      const plainPassword = generatePassword();
-      passwordToSend = plainPassword;
-      updates.push("password_hash = $1");
-      values.push(hashPassword(plainPassword));
+      passwordToSend = generatePassword();
+      values.push(hashPassword(passwordToSend));
+      updates.push(`password_hash = $${values.length}`);
     }
 
     if (updates.length > 0) {
@@ -109,9 +143,7 @@ async function ensureDefaultSuperAdmin(client) {
       );
     }
   } else {
-    const plainPassword = generatePassword();
-    passwordToSend = plainPassword;
-
+    passwordToSend = generatePassword();
     await client.query(
       `INSERT INTO admins (name, phone, email, password_hash, admin_tier, status)
        VALUES ($1, $2, $3, $4, 'super_admin', 'active')`,
@@ -119,7 +151,7 @@ async function ensureDefaultSuperAdmin(client) {
         DEFAULT_SUPER_ADMIN.name,
         DEFAULT_SUPER_ADMIN.phone,
         DEFAULT_SUPER_ADMIN.email,
-        hashPassword(plainPassword),
+        hashPassword(passwordToSend),
       ]
     );
   }
@@ -130,7 +162,7 @@ async function ensureDefaultSuperAdmin(client) {
   }
 
   try {
-    const sent = await sendPasswordEmail(DEFAULT_SUPER_ADMIN.email, passwordToSend);
+    const sent = await sendPasswordEmail(recipientEmail, passwordToSend);
     if (sent) {
       console.log("✅ Super admin password emailed.");
     } else {
@@ -155,6 +187,7 @@ async function createUpdatedAtInfrastructure(client) {
 
   const triggerTables = [
     "admins",
+    "signup_verifications",
     "contacts",
     "leads",
     "tasks",
@@ -191,6 +224,7 @@ async function recreateSchema(client) {
     "DROP TABLE IF EXISTS orders CASCADE",
     "DROP TABLE IF EXISTS broadcasts CASCADE",
     "DROP TABLE IF EXISTS templates CASCADE",
+    "DROP TABLE IF EXISTS signup_verifications CASCADE",
     "DROP TABLE IF EXISTS contacts CASCADE",
     "DROP TABLE IF EXISTS admins CASCADE",
     "DROP TABLE IF EXISTS requirements CASCADE",
@@ -244,12 +278,27 @@ async function createSchema(client) {
     `CREATE INDEX IF NOT EXISTS admins_email_lower_idx ON admins (LOWER(email))`,
 
     `
+    CREATE TABLE IF NOT EXISTS signup_verifications (
+      id SERIAL PRIMARY KEY,
+      email VARCHAR(150) UNIQUE NOT NULL,
+      code_hash TEXT NOT NULL,
+      payload_json JSONB NOT NULL,
+      attempts INT NOT NULL DEFAULT 0,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    `,
+    `CREATE INDEX IF NOT EXISTS signup_verifications_expires_idx ON signup_verifications (expires_at)`,
+
+    `
     CREATE TABLE IF NOT EXISTS contacts (
       id SERIAL PRIMARY KEY,
       phone VARCHAR(20) UNIQUE NOT NULL,
       name VARCHAR(100),
       email VARCHAR(150),
       assigned_admin_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+      previous_owner_admin VARCHAR(180),
       automation_disabled BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -413,7 +462,11 @@ async function createSchema(client) {
       category VARCHAR(100),
       description TEXT,
       price_label VARCHAR(60),
+      duration_value NUMERIC(10,2),
+      duration_unit VARCHAR(20),
       duration_minutes INT,
+      quantity_value NUMERIC(10,3),
+      quantity_unit VARCHAR(40),
       details_prompt TEXT,
       keywords TEXT,
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -427,6 +480,15 @@ async function createSchema(client) {
     `CREATE INDEX IF NOT EXISTS catalog_items_admin_type_idx ON catalog_items (admin_id, item_type)`,
     `CREATE INDEX IF NOT EXISTS catalog_items_admin_active_idx ON catalog_items (admin_id, is_active)`,
     `CREATE INDEX IF NOT EXISTS catalog_items_admin_sort_idx ON catalog_items (admin_id, sort_order, name)`,
+    `ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS duration_value NUMERIC(10,2)`,
+    `ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS duration_unit VARCHAR(20)`,
+    `ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS quantity_value NUMERIC(10,3)`,
+    `ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS quantity_unit VARCHAR(40)`,
+    `UPDATE catalog_items
+     SET duration_value = duration_minutes,
+         duration_unit = COALESCE(NULLIF(duration_unit, ''), 'minutes')
+     WHERE duration_minutes IS NOT NULL
+       AND duration_value IS NULL`,
   ];
 
   for (const sql of queries) {

@@ -401,7 +401,7 @@ export default function SettingsPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div className="lg:sticky lg:top-20 lg:self-start">
           <Card className="border border-white/70 bg-white/90 backdrop-blur p-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-1">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -425,7 +425,9 @@ export default function SettingsPage() {
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-aa-text-dark">{tab.name}</span>
-                      <span className="block text-xs text-aa-gray mt-0.5">{tab.hint}</span>
+                      <span className="mt-0.5 hidden text-xs text-aa-gray sm:block">
+                        {tab.hint}
+                      </span>
                     </span>
                   </div>
                 </button>
@@ -504,21 +506,21 @@ export default function SettingsPage() {
                   <div className="rounded-2xl border border-aa-orange/20 bg-aa-orange/5 p-4 sm:p-5">
                     <p className="text-xs uppercase tracking-wide text-aa-gray">Account Summary</p>
                     <div className="mt-3 space-y-3">
-                      <div className="flex items-center justify-between rounded-xl bg-white/90 px-3 py-2">
+                      <div className="flex flex-col gap-1 rounded-xl bg-white/90 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                         <span className="text-sm text-aa-gray">Role</span>
-                        <span className="text-sm font-semibold text-aa-text-dark">
+                        <span className="text-sm font-semibold text-aa-text-dark sm:text-right">
                           {user?.admin_tier === 'super_admin' ? 'Super Admin' : 'Admin'}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between rounded-xl bg-white/90 px-3 py-2">
+                      <div className="flex flex-col gap-1 rounded-xl bg-white/90 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                         <span className="text-sm text-aa-gray">Business Category</span>
-                        <span className="text-sm font-semibold text-aa-text-dark">
+                        <span className="text-sm font-semibold text-aa-text-dark sm:text-right break-words">
                           {profile.business_category || 'General'}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between rounded-xl bg-white/90 px-3 py-2">
+                      <div className="flex flex-col gap-1 rounded-xl bg-white/90 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                         <span className="text-sm text-aa-gray">Business Type</span>
-                        <span className="text-sm font-semibold text-aa-text-dark">
+                        <span className="text-sm font-semibold text-aa-text-dark sm:text-right break-words">
                           {getBusinessTypeLabel(profile.business_type)}
                         </span>
                       </div>
@@ -791,7 +793,7 @@ export default function SettingsPage() {
 
                 <section className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
                   <label className="mb-3 block text-xs uppercase tracking-wide text-aa-gray">Accent Color</label>
-                  <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-8">
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-6 md:grid-cols-8">
                     {ACCENT_COLORS.map((color) => {
                       const isActive =
                         accentColor?.toUpperCase() === color.toUpperCase();
@@ -843,8 +845,8 @@ export default function SettingsPage() {
                       : 'bg-red-50 border-red-200'
                   }`}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
                       <div
                         className={`h-3 w-3 rounded-full ${
                           whatsappTone === 'green'
@@ -927,25 +929,25 @@ export default function SettingsPage() {
                         placeholder="Not connected"
                         disabled
                       />
-                      <Input
-                        label="Business Category"
-                        value={whatsappConfig.category}
-                        disabled
-                      />
-                      <div className="sm:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <p className="text-xs text-aa-gray">
+                      <div className="flex flex-col">
+                        <Input
+                          label="Business Category"
+                          value={whatsappConfig.category}
+                          disabled
+                        />
+                        <p className="mt-1 text-xs text-aa-gray">
                           Category describes your domain like retail, shop, crackers, clinic, etc.
                         </p>
-                        <div>
-                          <Input
-                            label="Business Type"
-                            value={getBusinessTypeLabel(whatsappConfig.businessType)}
-                            disabled
-                          />
-                          <p className="mt-1 text-xs text-aa-gray">
-                            Type controls whether orders, appointments, or both are shown.
-                          </p>
-                        </div>
+                      </div>
+                      <div className="flex flex-col">
+                        <Input
+                          label="Business Type"
+                          value={getBusinessTypeLabel(whatsappConfig.businessType)}
+                          disabled
+                        />
+                        <p className="mt-1 text-xs text-aa-gray">
+                          Type controls whether orders, appointments, or both are shown.
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1123,30 +1125,6 @@ export default function SettingsPage() {
                   </div>
                 </section>
 
-                <section className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
-                  <h3 className="text-base font-semibold text-aa-text-dark">Active Sessions</h3>
-                  <div className="mt-3 space-y-3">
-                    {[
-                      { device: 'Chrome on Windows', location: 'Mumbai, India', time: 'Active now' },
-                      { device: 'Safari on iPhone', location: 'Delhi, India', time: '2 hours ago' }
-                    ].map((session, idx) => (
-                      <div
-                        key={idx}
-                        className="flex flex-col gap-3 rounded-xl border border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-semibold text-aa-text-dark">{session.device}</p>
-                          <p className="text-sm text-aa-gray">
-                            {session.location} - {session.time}
-                          </p>
-                        </div>
-                        <Button variant="ghost" className="w-full text-red-600 sm:w-auto">
-                          Revoke
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </section>
               </div>
             </Card>
           )}

@@ -216,6 +216,18 @@ const EXECUTIVE_KEYWORDS = [
   "baat",
   "help",
 ];
+const TRACK_ORDER_KEYWORDS = [
+  "track",
+  "tracking",
+  "track order",
+  "order status",
+  "where is my order",
+  "status",
+  "delivery update",
+];
+const YES_KEYWORDS = ["yes", "y", "haan", "ha", "ok", "okay", "confirm", "1"];
+const NO_KEYWORDS = ["no", "n", "2", "other", "view other", "change"];
+const PAYMENT_LINK = process.env.WHATSAPP_PAYMENT_LINK || "";
 
 const parseCatalogKeywords = (value) => {
   if (!value) return [];
@@ -252,11 +264,49 @@ const buildOptionKeywords = (item) => {
   return Array.from(keywords).filter(Boolean);
 };
 
+const normalizePriceLabelInr = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (text.includes("₹")) {
+    return text.replace(/₹\s*/g, "₹ ").replace(/\s{2,}/g, " ").trim();
+  }
+  let normalized = text.replace(/^\s*(?:inr|rs\.?|rupees?)\s*/i, "₹ ");
+  if (!normalized.includes("₹") && /^\d/.test(normalized)) {
+    normalized = `₹ ${normalized}`;
+  }
+  return normalized.replace(/\s{2,}/g, " ").trim();
+};
+
+const formatCatalogDuration = (item) => {
+  const durationValue = Number(item?.duration_value);
+  const durationUnit = String(item?.duration_unit || "").trim().toLowerCase();
+  if (Number.isFinite(durationValue) && durationValue > 0 && durationUnit) {
+    const normalizedUnit = durationValue === 1 ? durationUnit.replace(/s$/, "") : durationUnit;
+    return `${durationValue} ${normalizedUnit}`;
+  }
+  const durationMinutes = Number(item?.duration_minutes);
+  if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
+    return `${durationMinutes} min`;
+  }
+  return "";
+};
+
+const formatCatalogPack = (item) => {
+  const quantityValue = Number(item?.quantity_value);
+  if (!Number.isFinite(quantityValue) || quantityValue <= 0) return "";
+  const quantityUnit = sanitizeText(item?.quantity_unit || "unit", 40);
+  return `${quantityValue} ${quantityUnit || "unit"}`;
+};
+
 const formatMenuLine = (index, item) => {
   const parts = [`${index}️⃣ ${item.name}`];
-  if (item.price_label) parts.push(`- ${item.price_label}`);
-  if (item.item_type === "service" && item.duration_minutes) {
-    parts.push(`(${item.duration_minutes} min)`);
+  const priceLabel = normalizePriceLabelInr(item?.price_label);
+  const durationLabel = formatCatalogDuration(item);
+  const packLabel = formatCatalogPack(item);
+  if (priceLabel) parts.push(`- ${priceLabel}`);
+  if (durationLabel) parts.push(`(${durationLabel})`);
+  if (item?.item_type === "product" && packLabel) {
+    parts.push(`[${packLabel}]`);
   }
   return parts.join(" ");
 };
@@ -294,6 +344,100 @@ const buildCatalogMenuText = ({
   return lines.join("\n");
 };
 
+const parsePriceAmount = (value) => {
+  if (value == null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Number(value);
+  }
+  const raw = String(value);
+  if (!raw.trim()) return null;
+  const cleaned = raw.replace(/,/g, "");
+  const matched = cleaned.match(/(\d+(?:\.\d+)?)/);
+  if (!matched) return null;
+  const numeric = Number(matched[1]);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const formatInr = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "N/A";
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch (error) {
+    return `₹ ${amount.toFixed(0)}`;
+  }
+};
+
+const buildProductSelectionMessage = (automation) =>
+  automation?.productsMenuText ||
+  [
+    "Here are our products:",
+    "_No products available right now._",
+    "",
+    "_Reply with product number_",
+  ].join("\n");
+
+const buildProductDetailsMessage = (product) => {
+  const lines = [`✨ ${product?.label || "Selected Product"}`];
+  if (product?.category) {
+    lines.push(`Category: ${product.category}`);
+  }
+  if (product?.description) {
+    lines.push(`Details: ${product.description}`);
+  } else {
+    lines.push("✔ Premium quality");
+    lines.push("✔ Fast support");
+  }
+  if (product?.packLabel) {
+    lines.push(`📦 Pack: ${product.packLabel}`);
+  }
+  if (product?.priceLabel) {
+    lines.push(`💰 Price: ${normalizePriceLabelInr(product.priceLabel)}`);
+  } else if (Number.isFinite(product?.priceAmount)) {
+    lines.push(`💰 Price: ${formatInr(product.priceAmount)}`);
+  }
+  lines.push("");
+  lines.push("Would you like to order this?");
+  lines.push("1️⃣ Yes");
+  lines.push("2️⃣ View Other Products");
+  return lines.join("\n");
+};
+
+const computeProductTotal = (product, quantity) => {
+  const unit = Number(product?.priceAmount);
+  const qty = Number(quantity);
+  if (!Number.isFinite(unit) || !Number.isFinite(qty)) return null;
+  if (unit < 0 || qty <= 0) return null;
+  return unit * qty;
+};
+
+const buildOrderSummaryMessage = (user) => {
+  const product = user?.data?.selectedProduct || {};
+  const quantity = Number(user?.data?.productQuantity || 1);
+  const total = computeProductTotal(product, quantity);
+  const customerName = sanitizeNameUpper(user?.data?.name || user?.name) || "N/A";
+  const address = sanitizeText(user?.data?.address || "", 500) || "N/A";
+  const phone = sanitizePhone(user?.data?.deliveryPhone || "") || "N/A";
+  const note = sanitizeText(user?.data?.deliveryNote || "NO", 300) || "NO";
+
+  const lines = ["🧾 Order Summary", ""];
+  lines.push(`Product: ${product?.label || "N/A"}`);
+  lines.push(`Quantity: ${quantity}${product?.packLabel ? ` x ${product.packLabel}` : ""}`);
+  lines.push(`Total: ${total == null ? "N/A" : formatInr(total)}`);
+  lines.push("");
+  lines.push(`Name: ${customerName}`);
+  lines.push(`Address: ${address}`);
+  lines.push(`Phone: ${phone}`);
+  lines.push(`Delivery Note: ${note}`);
+  lines.push("");
+  lines.push("Type *CONFIRM* to continue.");
+  return lines.join("\n");
+};
+
 const getAdminCatalogItems = async (adminId) => {
   if (!Number.isFinite(adminId)) {
     return { services: [], products: [], hasCatalog: false };
@@ -305,13 +449,32 @@ const getAdminCatalogItems = async (adminId) => {
   }
 
   try {
-    const [rows] = await db.query(
-      `SELECT id, item_type, name, category, description, price_label, duration_minutes, details_prompt, keywords, is_active, sort_order, is_bookable
-       FROM catalog_items
-       WHERE admin_id = ?
-       ORDER BY sort_order ASC, name ASC, id ASC`,
-      [adminId]
-    );
+    let rows;
+    try {
+      [rows] = await db.query(
+        `SELECT id, item_type, name, category, description, price_label, duration_value, duration_unit, duration_minutes, quantity_value, quantity_unit, details_prompt, keywords, is_active, sort_order, is_bookable
+         FROM catalog_items
+         WHERE admin_id = ?
+         ORDER BY sort_order ASC, name ASC, id ASC`,
+        [adminId]
+      );
+    } catch (error) {
+      if (!isMissingColumnError(error)) throw error;
+      const [legacyRows] = await db.query(
+        `SELECT id, item_type, name, category, description, price_label, duration_minutes, details_prompt, keywords, is_active, sort_order, is_bookable
+         FROM catalog_items
+         WHERE admin_id = ?
+         ORDER BY sort_order ASC, name ASC, id ASC`,
+        [adminId]
+      );
+      rows = (legacyRows || []).map((row) => ({
+        ...row,
+        duration_value: row.duration_minutes || null,
+        duration_unit: row.duration_minutes ? "minutes" : null,
+        quantity_value: null,
+        quantity_unit: null,
+      }));
+    }
 
     const hasCatalog = rows.length > 0;
     const active = rows.filter((row) => row.is_active);
@@ -333,8 +496,11 @@ const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
   const nextAutomation = { ...baseAutomation };
 
   const serviceLabel = baseAutomation.serviceLabel || "Services";
-  const productLabel = baseAutomation.productLabel || "Products";
-  const execLabel = baseAutomation.execLabel || "Talk to Executive";
+  const productLabel = "View Products";
+  const trackOrderLabel = "Track Order";
+  const execLabel = "Talk to Support";
+  const supportsServices = baseAutomation.supportsServices !== false;
+  const supportsProducts = baseAutomation.supportsProducts !== false;
 
   const serviceOptions = [];
   const serviceItems = catalog?.services || [];
@@ -364,12 +530,21 @@ const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
   const productOptions = [];
   const productItems = catalog?.products || [];
   productItems.forEach((item, idx) => {
+    const normalizedPriceLabel = normalizePriceLabelInr(item.price_label || "");
     productOptions.push({
       id: `product_${item.id}`,
       number: String(idx + 1),
       label: item.name,
       keywords: buildOptionKeywords(item),
       prompt: item.details_prompt,
+      description: sanitizeText(item.description || "", 400),
+      category: sanitizeText(item.category || "General", 120),
+      priceLabel: sanitizeText(normalizedPriceLabel, 120),
+      priceAmount: parsePriceAmount(normalizedPriceLabel),
+      quantityValue: Number(item.quantity_value),
+      quantityUnit: sanitizeText(item.quantity_unit || "", 40),
+      packLabel: formatCatalogPack(item),
+      productId: item.id,
     });
   });
   productOptions.push({
@@ -380,18 +555,22 @@ const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
   });
 
   const mainMenuChoices = [];
-  if (serviceItems.length > 0) {
-    mainMenuChoices.push({
-      id: "SERVICES",
-      number: String(mainMenuChoices.length + 1),
-      label: serviceLabel,
-    });
-  }
-  if (productItems.length > 0) {
+  if (supportsProducts) {
     mainMenuChoices.push({
       id: "PRODUCTS",
       number: String(mainMenuChoices.length + 1),
       label: productLabel,
+    });
+    mainMenuChoices.push({
+      id: "TRACK_ORDER",
+      number: String(mainMenuChoices.length + 1),
+      label: trackOrderLabel,
+    });
+  } else if (supportsServices && serviceItems.length > 0) {
+    mainMenuChoices.push({
+      id: "SERVICES",
+      number: String(mainMenuChoices.length + 1),
+      label: serviceLabel,
     });
   }
   mainMenuChoices.push({
@@ -402,13 +581,16 @@ const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
 
   const serviceChoice = mainMenuChoices.find((choice) => choice.id === "SERVICES");
   const productChoice = mainMenuChoices.find((choice) => choice.id === "PRODUCTS");
+  const trackOrderChoice = mainMenuChoices.find((choice) => choice.id === "TRACK_ORDER");
   const executiveChoice = mainMenuChoices.find((choice) => choice.id === "EXECUTIVE");
 
   nextAutomation.mainMenuChoices = mainMenuChoices;
   nextAutomation.supportsServices = Boolean(serviceChoice);
   nextAutomation.supportsProducts = Boolean(productChoice);
+  nextAutomation.supportsTrackOrder = Boolean(trackOrderChoice);
+  nextAutomation.execLabel = execLabel;
   nextAutomation.mainMenuText = buildMainMenuText({
-    brandName: baseAutomation.brandName || "AlgoAura",
+    brandName: baseAutomation.brandName || "Our Store",
     serviceLabel,
     productLabel,
     execLabel,
@@ -434,15 +616,16 @@ const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
     includeMainMenu: true,
   });
   nextAutomation.productsMenuText = buildCatalogMenuText({
-    title: `${productLabel}:`,
+    title: "Here are our products:",
     items: productItems,
-    footer: "_Reply with a number or type the product name_",
+    footer: "_Reply with product number_",
     includeExecutive: false,
     includeMainMenu: true,
   });
   nextAutomation.serviceOptions = serviceOptions;
   nextAutomation.productOptions = productOptions;
   nextAutomation.detectMainIntent = (input) => {
+    if (trackOrderChoice && textHasAny(input, TRACK_ORDER_KEYWORDS)) return "TRACK_ORDER";
     if (textHasAny(input, EXECUTIVE_KEYWORDS)) return "EXECUTIVE";
     if (
       serviceChoice &&
@@ -452,7 +635,7 @@ const buildCatalogAutomation = ({ baseAutomation, catalog }) => {
     }
     if (
       productChoice &&
-      textHasAny(input, [productLabel.toLowerCase(), "product", "products", "order", "buy"])
+      textHasAny(input, [productLabel.toLowerCase(), "product", "products", "view products", "buy"])
     ) {
       return "PRODUCTS";
     }
@@ -742,11 +925,10 @@ const APPOINTMENT_END_HOUR = Number(process.env.APPOINTMENT_END_HOUR || 20);
 const APPOINTMENT_SLOT_MINUTES = Number(process.env.APPOINTMENT_SLOT_MINUTES || 60);
 const APPOINTMENT_WINDOW_MONTHS = Number(process.env.APPOINTMENT_WINDOW_MONTHS || 3);
 
-const DEFAULT_PROFESSION = "astrology";
 const DEFAULT_MAIN_MENU_CHOICES = [
-  { id: "SERVICES", number: "1", label: "Services" },
-  { id: "PRODUCTS", number: "2", label: "Products" },
-  { id: "EXECUTIVE", number: "3", label: "Talk to Executive" },
+  { id: "PRODUCTS", number: "1", label: "View Products" },
+  { id: "TRACK_ORDER", number: "2", label: "Track Order" },
+  { id: "EXECUTIVE", number: "3", label: "Talk to Support" },
 ];
 
 const getMainMenuChoices = (automation) =>
@@ -779,15 +961,14 @@ const buildMainMenuText = ({
   const resolvedChoices =
     menuChoices ||
     [
-      { id: "SERVICES", number: "1", label: serviceLabel },
-      { id: "PRODUCTS", number: "2", label: productLabel },
-      { id: "EXECUTIVE", number: "3", label: execLabel },
+      { id: "PRODUCTS", number: "1", label: productLabel || "View Products" },
+      { id: "TRACK_ORDER", number: "2", label: "Track Order" },
+      { id: "EXECUTIVE", number: "3", label: execLabel || "Talk to Support" },
     ];
   return [
-    "Namaste/Hello 🙏",
-    `I am a helper bot for *${brandName}*.`,
+    `Hi 👋 Welcome to ${brandName || "Our Store"}`,
     "",
-    "How can I help you today?",
+    "What would you like to do today?",
     "",
     ...buildMainMenuLines(resolvedChoices),
     "",
@@ -802,14 +983,14 @@ const buildReturningMenuText = (
   const resolvedChoices =
     menuChoices ||
     [
-      { id: "SERVICES", number: "1", label: serviceLabel },
-      { id: "PRODUCTS", number: "2", label: productLabel },
-      { id: "EXECUTIVE", number: "3", label: execLabel },
+      { id: "PRODUCTS", number: "1", label: productLabel || "View Products" },
+      { id: "TRACK_ORDER", number: "2", label: "Track Order" },
+      { id: "EXECUTIVE", number: "3", label: execLabel || "Talk to Support" },
     ];
   return [
     `Welcome back ${name} 👋`,
     "",
-    "How can we help you today?",
+    "How can I help you today?",
     "",
     ...buildMainMenuLines(resolvedChoices),
     "",
@@ -819,762 +1000,17 @@ const buildReturningMenuText = (
 
 const buildDetectMainIntent =
   ({ serviceKeywords = [], productKeywords = [] }) =>
-  (input) => {
-    const execKeywords = ["executive", "agent", "human", "call", "talk", "support", "baat"];
-    if (textHasAny(input, execKeywords)) return "EXECUTIVE";
+    (input) => {
+      const execKeywords = ["executive", "agent", "human", "call", "talk", "support", "baat"];
+      if (textHasAny(input, execKeywords)) return "EXECUTIVE";
 
-    const wantsService = textHasAny(input, serviceKeywords);
-    const wantsProduct = textHasAny(input, productKeywords);
+      const wantsService = textHasAny(input, serviceKeywords);
+      const wantsProduct = textHasAny(input, productKeywords);
 
-    if (wantsService && !wantsProduct) return "SERVICES";
-    if (wantsProduct && !wantsService) return "PRODUCTS";
-    return null;
-  };
-
-const ASTROLOGY_PROFILE = {
-  id: "astrology",
-  brandName: "Neeraj Astrology",
-  serviceLabel: "Services (सेवाएं)",
-  productLabel: "Products / Stones (प्रोडक्ट्स / रत्न)",
-  execLabel: "Talk to an Executive (एक्सपर्ट से बात)",
-  supportsAppointments: true,
-  appointmentKeywords: ["appointment", "consultation", "booking", "schedule", "meet"],
-  mainMenuText: [
-    "Namaste/Hello 🙏",
-    "I am a helper bot for *Neeraj Astrology*.",
-    "",
-    "How can I help you today? / Aaj aapko kis cheez me madad chahiye?",
-    "",
-    "1️⃣ Services (सेवाएं)",
-    "2️⃣ Products / Stones (प्रोडक्ट्स / रत्न)",
-    "3️⃣ Talk to an Executive (एक्सपर्ट से बात)",
-    "",
-    "_Reply with 1, 2, or 3, or type your need_",
-  ].join("\n"),
-  returningMenuText: (name) =>
-    [
-      `Welcome back ${name} 👋`,
-      "",
-      "How can we help you today? / Aaj aapko kis cheez me madad chahiye?",
-      "",
-      "1️⃣ Services (सेवाएं)",
-      "2️⃣ Products / Stones (प्रोडक्ट्स / रत्न)",
-      "3️⃣ Talk to an Executive (एक्सपर्ट से बात)",
-      "",
-      "_Reply with 1, 2, or 3, or type your need_",
-    ].join("\n"),
-  servicesMenuText: [
-    "Services Menu / सेवाएं:",
-    "1️⃣ Kundli / Birth Chart (कुंडली)",
-    "2️⃣ Vastu Consultation (वास्तु सलाह)",
-    "3️⃣ Gemstone Recommendation (रत्न सलाह)",
-    "4️⃣ Pooja / Paath Booking (पूजा/पाठ)",
-    "5️⃣ Shaadi / Marriage Guidance (शादी/विवाह)",
-    "6️⃣ Kaal Sarp Dosh / Sarpdosh Pooja (कालसर्प दोष पूजा)",
-    "7️⃣ Talk to Executive",
-    "8️⃣ Main Menu",
-    "",
-    "_Reply with a number or type the service name_",
-  ].join("\n"),
-  productsMenuText: [
-    "Products Menu / प्रोडक्ट्स:",
-    "1️⃣ Navaratna Set",
-    "2️⃣ Ruby (Manik) / माणिक",
-    "3️⃣ Emerald (Panna) / पन्ना",
-    "4️⃣ Yellow Sapphire (Pukhraj) / पुखराज",
-    "5️⃣ Blue Sapphire (Neelam) / नीलम",
-    "6️⃣ Pearl (Moti) / मोती",
-    "7️⃣ Diamond (Heera) / हीरा",
-    "8️⃣ Coral (Moonga) / मूंगा",
-    "9️⃣ Hessonite (Gomed) / गोमेद",
-    "10️⃣ Cat's Eye (Lehsunia) / लहसुनिया",
-    "11️⃣ Opal / ओपल",
-    "12️⃣ Amethyst / जमुनिया",
-    "13️⃣ Topaz / टोपाज़",
-    "14️⃣ Turquoise / फिरोज़ा",
-    "15️⃣ Moonstone / चंद्रकांत",
-    "16️⃣ Other Stone / अन्य",
-    "17️⃣ Main Menu",
-    "",
-    "_Reply with a number or type stone name_",
-  ].join("\n"),
-  productDetailsPrompt:
-    "Great choice 👍\nPlease share product details (stone name, carat/size, ring/pendant, purpose).\nPrices vary by quality/weight; we will share the best current estimate after details.",
-  serviceOptions: [
-    {
-      id: "kundli",
-      number: "1",
-      label: "Kundli / Birth Chart (कुंडली)",
-      keywords: [
-        "kundli",
-        "kundali",
-        "janam",
-        "patrika",
-        "birth chart",
-        "horoscope",
-        "कुंडली",
-      ],
-      prompt:
-        "Kundli ke liye apni *DOB (DD/MM/YYYY)*, *birth time*, aur *birth place (city)* bhejiye.\nअगर कोई specific समस्या है तो वो भी लिखें.",
-    },
-    {
-      id: "vastu",
-      number: "2",
-      label: "Vastu Consultation (वास्तु सलाह)",
-      keywords: ["vastu", "vaastu", "वास्तु"],
-      prompt:
-        "Vastu ke liye property type (home/office), city, aur concern/issue share karein.",
-    },
-    {
-      id: "gemstone",
-      number: "3",
-      label: "Gemstone Recommendation (रत्न सलाह)",
-      keywords: [
-        "gemstone",
-        "stone",
-        "ratna",
-        "pukhraj",
-        "neelam",
-        "panna",
-        "manik",
-        "moti",
-        "heera",
-        "gomed",
-        "lehsunia",
-        "moonga",
-        "ruby",
-        "emerald",
-        "sapphire",
-        "pearl",
-        "diamond",
-        "रत्न",
-      ],
-      prompt:
-        "Gemstone recommendation ke liye apni *DOB*, *birth time*, *birth place*, aur concern (career/health/marriage) bhejiye.",
-    },
-    {
-      id: "pooja",
-      number: "4",
-      label: "Pooja / Paath Booking (पूजा/पाठ)",
-      keywords: ["pooja", "puja", "paath", "path", "havan", "yagya", "पूजा", "पाठ"],
-      prompt:
-        "Pooja/Paath booking ke liye pooja type, preferred date, aur city/location share karein.",
-    },
-    {
-      id: "shaadi",
-      number: "5",
-      label: "Shaadi / Marriage Guidance (शादी/विवाह)",
-      keywords: ["shaadi", "shadi", "marriage", "vivah", "muhurat", "शादी", "विवाह"],
-      prompt:
-        "Shaadi guidance ke liye bride & groom ki *DOB*, *birth time*, *birth place* aur requirement (matching/muhurat) bhejiye.",
-    },
-    {
-      id: "kaalsarp",
-      number: "6",
-      label: "Kaal Sarp Dosh / Sarpdosh Pooja (कालसर्प दोष पूजा)",
-      keywords: [
-        "kaal sarp",
-        "kalsarp",
-        "kal sarp",
-        "sarpdosh",
-        "sarpa dosh",
-        "nag dosh",
-        "कालसर्प",
-        "सर्पदोष",
-      ],
-      prompt:
-        "Kaal Sarp Dosh Pooja ke liye apni *DOB*, *birth time*, *birth place*, preferred date, aur city share karein.",
-    },
-    {
-      id: "executive",
-      number: "7",
-      label: "Talk to Executive",
-      keywords: ["executive", "agent", "human", "call", "talk", "baat", "help"],
-    },
-    {
-      id: "main_menu",
-      number: "8",
-      label: "Main Menu",
-      keywords: ["menu", "main menu", "back", "home", "मुख्य मेनू", "मेनू"],
-    },
-  ],
-  productOptions: [
-    { id: "navaratna", number: "1", label: "Navaratna Set", keywords: ["navaratna", "navratan"] },
-    { id: "ruby", number: "2", label: "Ruby (Manik)", keywords: ["ruby", "manik", "माणिक"] },
-    { id: "emerald", number: "3", label: "Emerald (Panna)", keywords: ["emerald", "panna", "पन्ना"] },
-    { id: "yellow_sapphire", number: "4", label: "Yellow Sapphire (Pukhraj)", keywords: ["yellow sapphire", "pukhraj", "पुखराज"] },
-    { id: "blue_sapphire", number: "5", label: "Blue Sapphire (Neelam)", keywords: ["blue sapphire", "neelam", "नीलम"] },
-    { id: "pearl", number: "6", label: "Pearl (Moti)", keywords: ["pearl", "moti", "मोती"] },
-    { id: "diamond", number: "7", label: "Diamond (Heera)", keywords: ["diamond", "heera", "हीरा"] },
-    { id: "coral", number: "8", label: "Coral (Moonga)", keywords: ["coral", "moonga", "मूंगा"] },
-    { id: "hessonite", number: "9", label: "Hessonite (Gomed)", keywords: ["hessonite", "gomed", "गोमेद"] },
-    { id: "catseye", number: "10", label: "Cat's Eye (Lehsunia)", keywords: ["cat's eye", "cats eye", "lehsunia", "लहसुनिया"] },
-    { id: "opal", number: "11", label: "Opal", keywords: ["opal", "ओपल"] },
-    { id: "amethyst", number: "12", label: "Amethyst", keywords: ["amethyst", "jamuniya", "जमुनिया"] },
-    { id: "topaz", number: "13", label: "Topaz", keywords: ["topaz", "टोपाज़"] },
-    { id: "turquoise", number: "14", label: "Turquoise", keywords: ["turquoise", "firoza", "फिरोज़ा"] },
-    { id: "moonstone", number: "15", label: "Moonstone", keywords: ["moonstone", "chandrakant", "चंद्रकांत"] },
-    { id: "other", number: "16", label: "Other Stone / Custom", keywords: ["other stone", "custom", "koi aur", "any other"] },
-    { id: "main_menu", number: "17", label: "Main Menu", keywords: ["menu", "main menu", "back", "home", "मुख्य मेनू", "मेनू"] },
-  ],
-  detectMainIntent: buildDetectMainIntent({
-    serviceKeywords: [
-      "service",
-      "seva",
-      "kundli",
-      "kundali",
-      "vastu",
-      "pooja",
-      "puja",
-      "paath",
-      "path",
-      "gemstone recommendation",
-      "recommendation",
-      "consult",
-      "consultation",
-      "shaadi",
-      "marriage",
-      "vivah",
-      "muhurat",
-      "kaal sarp",
-      "sarpdosh",
-      "astro",
-      "astrology",
-    ],
-    productKeywords: [
-      "product",
-      "stone",
-      "gemstone",
-      "ring",
-      "pendant",
-      "mala",
-      "ratna",
-      "buy",
-      "order",
-      "price",
-      "cost",
-      "pearl",
-      "diamond",
-      "ruby",
-      "emerald",
-      "sapphire",
-      "neelam",
-      "panna",
-      "manik",
-      "moti",
-      "heera",
-      "pukhraj",
-      "gomed",
-      "lehsunia",
-      "moonga",
-    ],
-  }),
-};
-
-const CLINIC_PROFILE = {
-  id: "clinic",
-  brandName: "Your Clinic",
-  serviceLabel: "Appointments & Consultations",
-  productLabel: "Reports / Pharmacy",
-  execLabel: "Talk to Executive",
-  supportsAppointments: true,
-  appointmentKeywords: ["appointment", "doctor", "clinic", "consultation", "book", "schedule"],
-  mainMenuText: buildMainMenuText({
-    brandName: "Your Clinic",
-    serviceLabel: "Appointments & Consultations",
-    productLabel: "Reports / Pharmacy",
-    execLabel: "Talk to Executive",
-  }),
-  returningMenuText: (name) =>
-    buildReturningMenuText(
-      {
-        serviceLabel: "Appointments & Consultations",
-        productLabel: "Reports / Pharmacy",
-        execLabel: "Talk to Executive",
-      },
-      name
-    ),
-  servicesMenuText: [
-    "Clinic Services:",
-    "1️⃣ Doctor Appointment",
-    "2️⃣ Online Consultation",
-    "3️⃣ Lab Test Booking",
-    "4️⃣ Follow-up / Prescription",
-    "5️⃣ Talk to Executive",
-    "6️⃣ Main Menu",
-    "",
-    "_Reply with a number or type the service name_",
-  ].join("\n"),
-  productsMenuText: [
-    "Reports & Pharmacy:",
-    "1️⃣ Medicine / Pharmacy Order",
-    "2️⃣ Health Package",
-    "3️⃣ Report Copy",
-    "4️⃣ Main Menu",
-    "",
-    "_Reply with a number or type your need_",
-  ].join("\n"),
-  productDetailsPrompt:
-    "Please share medicine/package/report name, quantity, and prescription (if any).",
-  serviceOptions: [
-    {
-      id: "appointment",
-      number: "1",
-      label: "Doctor Appointment",
-      keywords: ["appointment", "doctor", "clinic", "checkup", "booking"],
-      bookable: true,
-      prompt:
-        "Please share patient name, preferred date/time, doctor (if any), and concern.",
-    },
-    {
-      id: "consultation",
-      number: "2",
-      label: "Online Consultation",
-      keywords: ["consultation", "online", "video", "call"],
-      bookable: true,
-      prompt:
-        "Please share patient name, preferred date/time, and concern for consultation.",
-    },
-    {
-      id: "lab",
-      number: "3",
-      label: "Lab Test Booking",
-      keywords: ["lab", "test", "blood", "report"],
-      bookable: true,
-      prompt:
-        "Please share test name(s), preferred date/time, and patient age.",
-    },
-    {
-      id: "followup",
-      number: "4",
-      label: "Follow-up / Prescription",
-      keywords: ["follow up", "followup", "prescription", "review"],
-      prompt:
-        "Please share patient name and previous visit details or prescription reference.",
-    },
-    {
-      id: "executive",
-      number: "5",
-      label: "Talk to Executive",
-      keywords: ["executive", "agent", "human", "call", "talk", "help"],
-    },
-    {
-      id: "main_menu",
-      number: "6",
-      label: "Main Menu",
-      keywords: ["menu", "main menu", "back", "home"],
-    },
-  ],
-  productOptions: [
-    {
-      id: "medicine",
-      number: "1",
-      label: "Medicine / Pharmacy Order",
-      keywords: ["medicine", "pharmacy", "tablet", "capsule", "drug"],
-    },
-    {
-      id: "package",
-      number: "2",
-      label: "Health Package",
-      keywords: ["package", "health package", "checkup"],
-    },
-    {
-      id: "report_copy",
-      number: "3",
-      label: "Report Copy",
-      keywords: ["report copy", "report", "results"],
-    },
-    {
-      id: "main_menu",
-      number: "4",
-      label: "Main Menu",
-      keywords: ["menu", "main menu", "back", "home"],
-    },
-  ],
-  detectMainIntent: buildDetectMainIntent({
-    serviceKeywords: ["appointment", "doctor", "clinic", "consultation", "checkup", "lab", "test"],
-    productKeywords: ["medicine", "pharmacy", "report", "package", "prescription"],
-  }),
-};
-
-const RESTAURANT_PROFILE = {
-  id: "restaurant",
-  brandName: "Your Restaurant",
-  serviceLabel: "Reservations & Events",
-  productLabel: "Order Food",
-  execLabel: "Talk to Executive",
-  supportsAppointments: true,
-  appointmentKeywords: ["reservation", "table", "booking", "event", "catering"],
-  mainMenuText: buildMainMenuText({
-    brandName: "Your Restaurant",
-    serviceLabel: "Reservations & Events",
-    productLabel: "Order Food",
-    execLabel: "Talk to Executive",
-  }),
-  returningMenuText: (name) =>
-    buildReturningMenuText(
-      {
-        serviceLabel: "Reservations & Events",
-        productLabel: "Order Food",
-        execLabel: "Talk to Executive",
-      },
-      name
-    ),
-  servicesMenuText: [
-    "Reservations & Events:",
-    "1️⃣ Table Reservation",
-    "2️⃣ Catering / Party Order",
-    "3️⃣ Event Booking",
-    "4️⃣ Talk to Executive",
-    "5️⃣ Main Menu",
-    "",
-    "_Reply with a number or type the service name_",
-  ].join("\n"),
-  productsMenuText: [
-    "Food Orders:",
-    "1️⃣ Today's Menu",
-    "2️⃣ Place an Order",
-    "3️⃣ Special Request",
-    "4️⃣ Main Menu",
-    "",
-    "_Reply with a number or type your need_",
-  ].join("\n"),
-  productDetailsPrompt:
-    "Please share items, quantity, delivery address, and preferred time.",
-  serviceOptions: [
-    {
-      id: "reservation",
-      number: "1",
-      label: "Table Reservation",
-      keywords: ["table", "reservation", "booking"],
-      bookable: true,
-      prompt:
-        "Please share name, number of guests, preferred date/time, and contact number.",
-    },
-    {
-      id: "catering",
-      number: "2",
-      label: "Catering / Party Order",
-      keywords: ["catering", "party", "bulk", "event"],
-      bookable: true,
-      prompt:
-        "Please share event date, number of guests, menu preference, and location.",
-    },
-    {
-      id: "event",
-      number: "3",
-      label: "Event Booking",
-      keywords: ["event", "booking", "private"],
-      bookable: true,
-      prompt:
-        "Please share event date, guests count, and any special requirements.",
-    },
-    {
-      id: "executive",
-      number: "4",
-      label: "Talk to Executive",
-      keywords: ["executive", "agent", "human", "call", "talk", "help"],
-    },
-    {
-      id: "main_menu",
-      number: "5",
-      label: "Main Menu",
-      keywords: ["menu", "main menu", "back", "home"],
-    },
-  ],
-  productOptions: [
-    {
-      id: "menu",
-      number: "1",
-      label: "Today's Menu",
-      keywords: ["menu", "today", "specials"],
-    },
-    {
-      id: "order",
-      number: "2",
-      label: "Place an Order",
-      keywords: ["order", "food", "delivery", "takeaway"],
-    },
-    {
-      id: "special",
-      number: "3",
-      label: "Special Request",
-      keywords: ["special", "custom", "extra"],
-    },
-    {
-      id: "main_menu",
-      number: "4",
-      label: "Main Menu",
-      keywords: ["menu", "main menu", "back", "home"],
-    },
-  ],
-  detectMainIntent: buildDetectMainIntent({
-    serviceKeywords: ["reservation", "table", "booking", "party", "catering", "event"],
-    productKeywords: ["order", "food", "menu", "delivery", "takeaway"],
-  }),
-};
-
-const SALON_PROFILE = {
-  id: "salon",
-  brandName: "Your Salon",
-  serviceLabel: "Appointments",
-  productLabel: "Packages & Products",
-  execLabel: "Talk to Executive",
-  supportsAppointments: true,
-  appointmentKeywords: ["appointment", "salon", "haircut", "facial", "booking"],
-  mainMenuText: buildMainMenuText({
-    brandName: "Your Salon",
-    serviceLabel: "Appointments",
-    productLabel: "Packages & Products",
-    execLabel: "Talk to Executive",
-  }),
-  returningMenuText: (name) =>
-    buildReturningMenuText(
-      {
-        serviceLabel: "Appointments",
-        productLabel: "Packages & Products",
-        execLabel: "Talk to Executive",
-      },
-      name
-    ),
-  servicesMenuText: [
-    "Salon Services:",
-    "1️⃣ Haircut / Styling",
-    "2️⃣ Hair Color",
-    "3️⃣ Facial / Skin Care",
-    "4️⃣ Bridal / Party Makeup",
-    "5️⃣ Talk to Executive",
-    "6️⃣ Main Menu",
-    "",
-    "_Reply with a number or type the service name_",
-  ].join("\n"),
-  productsMenuText: [
-    "Packages & Products:",
-    "1️⃣ Service Package",
-    "2️⃣ Product Purchase",
-    "3️⃣ Gift Card",
-    "4️⃣ Main Menu",
-    "",
-    "_Reply with a number or type your need_",
-  ].join("\n"),
-  productDetailsPrompt:
-    "Please share package/product name and preferred date/time.",
-  serviceOptions: [
-    {
-      id: "haircut",
-      number: "1",
-      label: "Haircut / Styling",
-      keywords: ["haircut", "cut", "styling"],
-      bookable: true,
-      prompt:
-        "Please share preferred date/time and any styling preference.",
-    },
-    {
-      id: "color",
-      number: "2",
-      label: "Hair Color",
-      keywords: ["color", "colour", "highlights", "balayage"],
-      bookable: true,
-      prompt:
-        "Please share preferred date/time and color preference.",
-    },
-    {
-      id: "facial",
-      number: "3",
-      label: "Facial / Skin Care",
-      keywords: ["facial", "skin", "cleanup", "spa"],
-      bookable: true,
-      prompt:
-        "Please share preferred date/time and skin concern (if any).",
-    },
-    {
-      id: "bridal",
-      number: "4",
-      label: "Bridal / Party Makeup",
-      keywords: ["bridal", "party", "makeup", "make-up"],
-      bookable: true,
-      prompt:
-        "Please share event date/time and makeup requirement.",
-    },
-    {
-      id: "executive",
-      number: "5",
-      label: "Talk to Executive",
-      keywords: ["executive", "agent", "human", "call", "talk", "help"],
-    },
-    {
-      id: "main_menu",
-      number: "6",
-      label: "Main Menu",
-      keywords: ["menu", "main menu", "back", "home"],
-    },
-  ],
-  productOptions: [
-    {
-      id: "package",
-      number: "1",
-      label: "Service Package",
-      keywords: ["package", "combo", "deal"],
-    },
-    {
-      id: "product",
-      number: "2",
-      label: "Product Purchase",
-      keywords: ["product", "kit", "shampoo", "serum"],
-    },
-    {
-      id: "gift",
-      number: "3",
-      label: "Gift Card",
-      keywords: ["gift", "voucher", "card"],
-    },
-    {
-      id: "main_menu",
-      number: "4",
-      label: "Main Menu",
-      keywords: ["menu", "main menu", "back", "home"],
-    },
-  ],
-  detectMainIntent: buildDetectMainIntent({
-    serviceKeywords: ["appointment", "haircut", "color", "facial", "makeup", "salon"],
-    productKeywords: ["package", "product", "gift", "voucher", "kit"],
-  }),
-};
-
-const SHOP_PROFILE = {
-  id: "shop",
-  brandName: "Your Shop",
-  serviceLabel: "Availability & Store Visit",
-  productLabel: "Product Inquiry / Order",
-  execLabel: "Talk to Executive",
-  mainMenuText: buildMainMenuText({
-    brandName: "Your Shop",
-    serviceLabel: "Availability & Store Visit",
-    productLabel: "Product Inquiry / Order",
-    execLabel: "Talk to Executive",
-  }),
-  returningMenuText: (name) =>
-    buildReturningMenuText(
-      {
-        serviceLabel: "Availability & Store Visit",
-        productLabel: "Product Inquiry / Order",
-        execLabel: "Talk to Executive",
-      },
-      name
-    ),
-  servicesMenuText: [
-    "Store Services:",
-    "1️⃣ Check Availability",
-    "2️⃣ Store Visit / Appointment",
-    "3️⃣ Return / Exchange",
-    "4️⃣ Bulk Order",
-    "5️⃣ Talk to Executive",
-    "6️⃣ Main Menu",
-    "",
-    "_Reply with a number or type the service name_",
-  ].join("\n"),
-  productsMenuText: [
-    "Product Inquiry:",
-    "1️⃣ Price Inquiry",
-    "2️⃣ Place an Order",
-    "3️⃣ Catalog / Options",
-    "4️⃣ Main Menu",
-    "",
-    "_Reply with a number or type your need_",
-  ].join("\n"),
-  productDetailsPrompt:
-    "Please share product name, size/color, quantity, and delivery details (if needed).",
-  serviceOptions: [
-    {
-      id: "availability",
-      number: "1",
-      label: "Check Availability",
-      keywords: ["availability", "in stock", "stock"],
-      prompt:
-        "Please share the product name, size/color, and quantity to check availability.",
-    },
-    {
-      id: "visit",
-      number: "2",
-      label: "Store Visit / Appointment",
-      keywords: ["visit", "appointment", "store"],
-      prompt:
-        "Please share preferred date/time for your visit.",
-    },
-    {
-      id: "return",
-      number: "3",
-      label: "Return / Exchange",
-      keywords: ["return", "exchange", "refund"],
-      prompt:
-        "Please share order details and reason for return/exchange.",
-    },
-    {
-      id: "bulk",
-      number: "4",
-      label: "Bulk Order",
-      keywords: ["bulk", "wholesale", "large order"],
-      prompt:
-        "Please share product name, quantity, and delivery location.",
-    },
-    {
-      id: "executive",
-      number: "5",
-      label: "Talk to Executive",
-      keywords: ["executive", "agent", "human", "call", "talk", "help"],
-    },
-    {
-      id: "main_menu",
-      number: "6",
-      label: "Main Menu",
-      keywords: ["menu", "main menu", "back", "home"],
-    },
-  ],
-  productOptions: [
-    {
-      id: "price",
-      number: "1",
-      label: "Price Inquiry",
-      keywords: ["price", "cost", "rate"],
-    },
-    {
-      id: "order",
-      number: "2",
-      label: "Place an Order",
-      keywords: ["order", "buy", "purchase"],
-    },
-    {
-      id: "catalog",
-      number: "3",
-      label: "Catalog / Options",
-      keywords: ["catalog", "options", "collection"],
-    },
-    {
-      id: "main_menu",
-      number: "4",
-      label: "Main Menu",
-      keywords: ["menu", "main menu", "back", "home"],
-    },
-  ],
-  detectMainIntent: buildDetectMainIntent({
-    serviceKeywords: ["availability", "visit", "return", "exchange", "bulk", "wholesale"],
-    productKeywords: ["price", "order", "buy", "catalog", "product"],
-  }),
-};
-
-const AUTOMATION_PROFILES = {
-  astrology: ASTROLOGY_PROFILE,
-  clinic: CLINIC_PROFILE,
-  restaurant: RESTAURANT_PROFILE,
-  salon: SALON_PROFILE,
-  shop: SHOP_PROFILE,
-};
-
-const AUTOMATION_PROFILE_BY_BUSINESS_TYPE = {
-  product: AUTOMATION_PROFILES.shop,
-  service: AUTOMATION_PROFILES.clinic,
-  both: AUTOMATION_PROFILES[DEFAULT_PROFESSION],
-};
+      if (wantsService && !wantsProduct) return "SERVICES";
+      if (wantsProduct && !wantsService) return "PRODUCTS";
+      return null;
+    };
 
 const normalizeBusinessType = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
@@ -1582,9 +1018,72 @@ const normalizeBusinessType = (value) => {
   return "both";
 };
 
-const getAutomationProfile = (businessType) =>
-  AUTOMATION_PROFILE_BY_BUSINESS_TYPE[normalizeBusinessType(businessType)] ||
-  AUTOMATION_PROFILE_BY_BUSINESS_TYPE.both;
+const DYNAMIC_AUTOMATION_PROFILE = {
+  id: "dynamic",
+  brandName: "Our Store",
+  serviceLabel: "Services",
+  productLabel: "View Products",
+  execLabel: "Talk to Support",
+  supportsAppointments: true,
+  appointmentKeywords: ["appointment", "booking", "schedule", "consultation", "visit", "meeting"],
+  productDetailsPrompt:
+    "Please share product name, quantity, and any specific requirements.",
+  serviceOptions: [],
+  productOptions: [],
+  detectMainIntent: buildDetectMainIntent({
+    serviceKeywords: ["service", "services", "appointment", "booking", "consultation", "visit"],
+    productKeywords: ["product", "products", "order", "buy", "price", "catalog"],
+  }),
+};
+
+const buildAutomationProfileForBusinessType = (businessType, brandName = "Our Store") => {
+  const normalized = normalizeBusinessType(businessType);
+  const supportsServices = normalized !== "product";
+  const supportsProducts = normalized !== "service";
+  const supportsAppointments = normalized !== "product";
+  const menuChoices = [];
+
+  if (supportsProducts) {
+    menuChoices.push({ id: "PRODUCTS", number: String(menuChoices.length + 1), label: "View Products" });
+    menuChoices.push({ id: "TRACK_ORDER", number: String(menuChoices.length + 1), label: "Track Order" });
+  } else if (supportsServices) {
+    menuChoices.push({ id: "SERVICES", number: String(menuChoices.length + 1), label: "Services" });
+  }
+  menuChoices.push({
+    id: "EXECUTIVE",
+    number: String(menuChoices.length + 1),
+    label: DYNAMIC_AUTOMATION_PROFILE.execLabel,
+  });
+
+  return {
+    ...DYNAMIC_AUTOMATION_PROFILE,
+    brandName: sanitizeText(brandName, 120) || "Our Store",
+    supportsAppointments,
+    supportsServices,
+    supportsProducts,
+    mainMenuChoices: menuChoices,
+    mainMenuText: buildMainMenuText({
+      brandName: sanitizeText(brandName, 120) || "Our Store",
+      serviceLabel: DYNAMIC_AUTOMATION_PROFILE.serviceLabel,
+      productLabel: DYNAMIC_AUTOMATION_PROFILE.productLabel,
+      execLabel: DYNAMIC_AUTOMATION_PROFILE.execLabel,
+      menuChoices,
+    }),
+    returningMenuText: (name) =>
+      buildReturningMenuText(
+        {
+          serviceLabel: DYNAMIC_AUTOMATION_PROFILE.serviceLabel,
+          productLabel: DYNAMIC_AUTOMATION_PROFILE.productLabel,
+          execLabel: DYNAMIC_AUTOMATION_PROFILE.execLabel,
+          menuChoices,
+        },
+        name
+      ),
+  };
+};
+
+const getAutomationProfile = (businessType, brandName = "Our Store") =>
+  buildAutomationProfileForBusinessType(normalizeBusinessType(businessType), brandName);
 
 const parseAllowedAutomationBusinessTypes = () => {
   const raw = String(process.env.WHATSAPP_AUTOMATION_BUSINESS_TYPES || "").trim();
@@ -2105,7 +1604,38 @@ const sendResumePrompt = async ({ user, sendMessage, automation }) => {
       await sendMessage(automation.servicesMenuText);
       return;
     case "PRODUCTS_MENU":
-      await sendMessage(automation.productsMenuText);
+      await sendMessage(buildProductSelectionMessage(automation));
+      return;
+    case "PRODUCT_CONFIRM_SELECTION":
+      await sendMessage(buildProductDetailsMessage(user.data.selectedProduct || {}));
+      return;
+    case "PRODUCT_QUANTITY":
+      await sendMessage("How many would you like to order?\n(Example: 1, 2, 3)");
+      return;
+    case "PRODUCT_CUSTOMER_NAME":
+      await sendMessage("Great 👍\nCan I have your full name?");
+      return;
+    case "PRODUCT_CUSTOMER_ADDRESS":
+      await sendMessage("Please share your delivery address.");
+      return;
+    case "PRODUCT_CUSTOMER_PHONE":
+      await sendMessage("Your phone number for delivery updates?");
+      return;
+    case "PRODUCT_DELIVERY_NOTE":
+      await sendMessage("Any note for delivery? (or type NO)");
+      return;
+    case "PRODUCT_ORDER_SUMMARY":
+      await sendMessage(buildOrderSummaryMessage(user));
+      return;
+    case "PRODUCT_PAYMENT_METHOD":
+      await sendMessage("Payment Method:\n1️⃣ Cash on Delivery\n2️⃣ Pay Now");
+      return;
+    case "PRODUCT_PAYMENT_CONFIRM":
+      await sendMessage(
+        PAYMENT_LINK
+          ? `Please complete payment using this secure link 👇\n${PAYMENT_LINK}\n\nReply *DONE* after payment.`
+          : "Please complete payment using the link shared by support.\nReply *DONE* after payment."
+      );
       return;
     case "SERVICE_DETAILS": {
       const serviceOption = automation.serviceOptions.find(
@@ -2113,24 +1643,18 @@ const sendResumePrompt = async ({ user, sendMessage, automation }) => {
       );
       await sendMessage(
         serviceOption?.prompt ||
-          "Please share your service details (DOB, time, place, and concern)."
+        "Please share your service details (DOB, time, place, and concern)."
       );
       return;
     }
     case "PRODUCT_REQUIREMENTS":
-      await sendMessage(
-        user.data.productDetailsPrompt || automation.productDetailsPrompt
-      );
+      await sendMessage("How many would you like to order?\n(Example: 1, 2, 3)");
       return;
     case "PRODUCT_ADDRESS":
-      await sendMessage(
-        "Please share your *full delivery address with pin code* (पूरा पता + पिन कोड)."
-      );
+      await sendMessage("Please share your delivery address.");
       return;
     case "PRODUCT_ALT_CONTACT":
-      await sendMessage(
-        "Alternate contact number (optional). If none, reply *NA*."
-      );
+      await sendMessage("Your phone number for delivery updates?");
       return;
     case "EXECUTIVE_MESSAGE":
       await sendMessage(
@@ -2186,9 +1710,20 @@ const inferStepFromOutgoing = (text, automation) => {
   if (automation?.mainMenuText && text.trim() === automation.mainMenuText.trim()) {
     return "MENU";
   }
+  if (normalized.includes("would you like to order this")) return "PRODUCT_CONFIRM_SELECTION";
+  if (normalized.includes("how many would you like to order")) return "PRODUCT_QUANTITY";
+  if (normalized.includes("can i have your full name")) return "PRODUCT_CUSTOMER_NAME";
+  if (normalized.includes("please share your delivery address")) return "PRODUCT_CUSTOMER_ADDRESS";
+  if (normalized.includes("delivery updates")) return "PRODUCT_CUSTOMER_PHONE";
+  if (normalized.includes("any note for delivery")) return "PRODUCT_DELIVERY_NOTE";
+  if (normalized.includes("order summary")) return "PRODUCT_ORDER_SUMMARY";
+  if (normalized.includes("payment method")) return "PRODUCT_PAYMENT_METHOD";
+  if (normalized.includes("reply *done*") || normalized.includes("reply done after payment")) {
+    return "PRODUCT_PAYMENT_CONFIRM";
+  }
   if (normalized.includes("please share your service details")) return "SERVICE_DETAILS";
-  if (normalized.includes("full delivery address")) return "PRODUCT_ADDRESS";
-  if (normalized.includes("alternate contact number")) return "PRODUCT_ALT_CONTACT";
+  if (normalized.includes("full delivery address")) return "PRODUCT_CUSTOMER_ADDRESS";
+  if (normalized.includes("alternate contact number")) return "PRODUCT_CUSTOMER_PHONE";
   if (normalized.includes("email address")) return "ASK_EMAIL";
   if (normalized.includes("may i know") && normalized.includes("name")) return "ASK_NAME";
   if (normalized.includes("please tell us briefly") || normalized.includes("how we can help")) {
@@ -2272,6 +1807,224 @@ const finalizeLead = async ({
   }
 };
 
+const fetchRecentOrdersForPhone = async ({ adminId, phone, limit = 3 }) => {
+  if (!Number.isFinite(adminId) || !phone) return [];
+  const normalized = sanitizePhone(phone);
+  if (!normalized) return [];
+  const [rows] = await db.query(
+    `
+      SELECT
+        id,
+        order_number,
+        status,
+        fulfillment_status,
+        payment_status,
+        payment_total,
+        delivery_method,
+        COALESCE(placed_at, created_at) AS placed_at,
+        updated_at
+      FROM orders
+      WHERE admin_id = ?
+        AND (
+          customer_phone = ?
+          OR regexp_replace(COALESCE(customer_phone, ''), '\\D', '', 'g') = ?
+        )
+      ORDER BY COALESCE(placed_at, created_at) DESC, id DESC
+      LIMIT ?
+    `,
+    [adminId, normalized, normalized, limit]
+  );
+  return rows || [];
+};
+
+const toSimpleStatusLabel = (value) =>
+  String(value || "new")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
+const isPackedOrder = (order) => {
+  const status = String(order?.status || "").toLowerCase();
+  const fulfillment = String(order?.fulfillment_status || "").toLowerCase();
+  return ["packed", "out_for_delivery", "fulfilled"].includes(status) ||
+    ["packed", "shipped", "delivered"].includes(fulfillment);
+};
+
+const isDeliveryReleased = (order) => {
+  const status = String(order?.status || "").toLowerCase();
+  const fulfillment = String(order?.fulfillment_status || "").toLowerCase();
+  return ["out_for_delivery", "fulfilled"].includes(status) ||
+    ["shipped", "delivered"].includes(fulfillment);
+};
+
+const isDeliveredOrder = (order) => {
+  const status = String(order?.status || "").toLowerCase();
+  const fulfillment = String(order?.fulfillment_status || "").toLowerCase();
+  return status === "fulfilled" || fulfillment === "delivered";
+};
+
+const buildTrackingMessage = (orders) => {
+  if (!Array.isArray(orders) || orders.length === 0) {
+    return "I couldn't find any recent orders on this number.\nPlease share your order ID or contact support.";
+  }
+  const lines = ["📦 Delivery Updates", ""];
+  orders.forEach((order, index) => {
+    const ref = order.order_number || `#${order.id}`;
+    const placedDate = order.placed_at ? new Date(order.placed_at) : null;
+    const updatedDate = order.updated_at ? new Date(order.updated_at) : null;
+    const placedAt =
+      placedDate && isValid(placedDate) ? format(placedDate, "d MMM, h:mm a") : "N/A";
+    const updatedAt =
+      updatedDate && isValid(updatedDate) ? format(updatedDate, "d MMM, h:mm a") : "N/A";
+    const packedLabel = isPackedOrder(order) ? "✅ Packed" : "❌ Not packed yet";
+    const releasedLabel = isDeliveryReleased(order) ? "✅ Released" : "❌ Not released yet";
+    const deliveredLabel = isDeliveredOrder(order) ? "✅ Delivered" : "⏳ In transit";
+    lines.push(`${index + 1}️⃣ ${ref}`);
+    lines.push(`Order Status: ${toSimpleStatusLabel(order.status)}`);
+    lines.push(`Fulfillment: ${toSimpleStatusLabel(order.fulfillment_status || "unfulfilled")}`);
+    lines.push(`Packed: ${packedLabel}`);
+    lines.push(`Delivery Released: ${releasedLabel}`);
+    lines.push(`Delivery: ${deliveredLabel}`);
+    lines.push(`Payment: ${toSimpleStatusLabel(order.payment_status || "pending")}`);
+    lines.push(`Placed: ${placedAt}`);
+    lines.push(`Last Update: ${updatedAt}`);
+    if (Number.isFinite(Number(order.payment_total))) {
+      lines.push(`Amount: ${formatInr(Number(order.payment_total))}`);
+    }
+    if (order.delivery_method) {
+      lines.push(`Method: ${sanitizeText(order.delivery_method, 40)}`);
+    }
+    lines.push("");
+  });
+  lines.push("Need help? Type SUPPORT.");
+  return lines.join("\n");
+};
+
+const createWhatsAppOrder = async ({
+  user,
+  adminId,
+  fallbackPhone,
+  paymentMethod = "cod",
+  paymentStatus = "pending",
+}) => {
+  const product = user?.data?.selectedProduct || null;
+  const quantity = Number(user?.data?.productQuantity || 1);
+  if (!product?.label || !Number.isFinite(quantity) || quantity <= 0) {
+    throw new Error("Invalid product order details.");
+  }
+
+  const customerName = sanitizeNameUpper(user?.data?.name || user?.name || "Customer") || "Customer";
+  const customerPhone =
+    sanitizePhone(user?.data?.deliveryPhone || "") || sanitizePhone(fallbackPhone) || null;
+  const customerEmail = sanitizeEmail(user?.data?.email || user?.email || "");
+  const deliveryAddress = sanitizeText(user?.data?.address || "", 600);
+  const deliveryNote = sanitizeText(user?.data?.deliveryNote || "", 300);
+  const unitPrice = Number(product.priceAmount);
+  const paymentTotal =
+    Number.isFinite(unitPrice) && unitPrice >= 0 ? Number((unitPrice * quantity).toFixed(2)) : null;
+  const paid = paymentStatus === "paid" && Number.isFinite(paymentTotal) ? paymentTotal : 0;
+  const nowStamp = Date.now().toString().slice(-8);
+  const rand = String(Math.floor(100 + Math.random() * 900));
+  const orderNumber = `WA-${nowStamp}${rand}`;
+
+  const items = [
+    {
+      id: product.productId || null,
+      name: product.label,
+      quantity,
+      price: Number.isFinite(unitPrice) ? unitPrice : 0,
+      price_label: normalizePriceLabelInr(product.priceLabel || null) || null,
+      category: product.category || null,
+      quantity_value:
+        Number.isFinite(Number(product.quantityValue)) && Number(product.quantityValue) > 0
+          ? Number(product.quantityValue)
+          : null,
+      quantity_unit: sanitizeText(product.quantityUnit || "", 40) || null,
+    },
+  ];
+  const notes = [];
+  if (deliveryNote && deliveryNote.toLowerCase() !== "no") {
+    notes.push({
+      id: `note-${Date.now()}`,
+      message: deliveryNote,
+      author: "Customer",
+      created_at: new Date().toISOString(),
+    });
+  }
+
+  if (user?.clientId) {
+    await db.query(
+      `UPDATE contacts
+       SET name = COALESCE(?, name),
+           email = COALESCE(?, email),
+           updated_at = NOW()
+       WHERE id = ?`,
+      [customerName, customerEmail || null, user.clientId]
+    );
+  }
+
+  const [rows] = await db.query(
+    `
+      INSERT INTO orders (
+        admin_id,
+        order_number,
+        customer_name,
+        customer_phone,
+        customer_email,
+        channel,
+        status,
+        fulfillment_status,
+        delivery_method,
+        delivery_address,
+        items,
+        notes,
+        placed_at,
+        payment_total,
+        payment_paid,
+        payment_status,
+        payment_method,
+        payment_currency,
+        payment_notes
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, NOW(), ?, ?, ?, ?, ?, ?)
+      RETURNING id, order_number, payment_total
+    `,
+    [
+      adminId,
+      orderNumber,
+      customerName,
+      customerPhone,
+      customerEmail || null,
+      "WhatsApp",
+      "confirmed",
+      "unfulfilled",
+      "Delivery",
+      deliveryAddress || null,
+      JSON.stringify(items),
+      JSON.stringify(notes),
+      paymentTotal,
+      paid,
+      paymentStatus,
+      paymentMethod || null,
+      "INR",
+      paymentMethod === "online" ? "Paid via WhatsApp flow" : "Cash on delivery",
+    ]
+  );
+  return rows?.[0] || null;
+};
+
+const resetProductFlowData = (user) => {
+  if (!user?.data) return;
+  delete user.data.selectedProduct;
+  delete user.data.productQuantity;
+  delete user.data.deliveryPhone;
+  delete user.data.deliveryNote;
+  delete user.data.address;
+  delete user.data.productDetails;
+  delete user.data.productDetailsPrompt;
+};
+
 const handleIncomingMessage = async ({
   session,
   message,
@@ -2312,11 +2065,11 @@ const handleIncomingMessage = async ({
     let isReturningUser = rows.length > 0;
     let existingUser = isReturningUser
       ? {
-          ...rows[0],
-          name: sanitizeNameUpper(rows[0]?.name),
-          email: sanitizeEmail(rows[0]?.email),
-          automation_disabled: rows[0]?.automation_disabled === true,
-        }
+        ...rows[0],
+        name: sanitizeNameUpper(rows[0]?.name),
+        email: sanitizeEmail(rows[0]?.email),
+        automation_disabled: rows[0]?.automation_disabled === true,
+      }
       : null;
     let assignedAdminId = existingUser?.assigned_admin_id || activeAdminId;
     if (existingUser && existingUser.assigned_admin_id !== activeAdminId) {
@@ -2406,7 +2159,8 @@ const handleIncomingMessage = async ({
 
     const aiSettings = await getAdminAISettings(assignedAdminId);
     const businessType = normalizeBusinessType(adminProfile?.business_type);
-    const baseAutomation = getAutomationProfile(businessType);
+    const brandName = sanitizeText(adminProfile?.business_category || "Our Store", 120) || "Our Store";
+    const baseAutomation = getAutomationProfile(businessType, brandName);
     const catalog = await getAdminCatalogItems(assignedAdminId);
     const automation = buildCatalogAutomation({ baseAutomation, catalog });
     user.data.businessType = businessType;
@@ -2713,6 +2467,15 @@ const handleIncomingMessage = async ({
         mainIntent || (matchedService ? "SERVICES" : matchedProduct ? "PRODUCTS" : null);
 
       await delay(1000);
+      if (resolvedIntent === "TRACK_ORDER") {
+        const tracked = await fetchRecentOrdersForPhone({
+          adminId: assignedAdminId,
+          phone: user.data.deliveryPhone || phone,
+        });
+        await sendMessage(buildTrackingMessage(tracked));
+        user.step = "MENU";
+        return;
+      }
       if (resolvedIntent === "SERVICES") {
         if (!automation.supportsServices) {
           await sendMessage(automation.mainMenuText);
@@ -2738,7 +2501,7 @@ const handleIncomingMessage = async ({
           user.data.serviceType = matchedService.label;
           await sendMessage(
             matchedService.prompt ||
-              "Please share your service details (DOB, time, place, and concern)."
+            "Please share your service details (DOB, time, place, and concern)."
           );
           user.step = "SERVICE_DETAILS";
           return;
@@ -2755,19 +2518,29 @@ const handleIncomingMessage = async ({
         }
         user.data.reason = "Products";
         if (matchedProduct && matchedProduct.id !== "main_menu") {
+          user.data.selectedProduct = {
+            id: matchedProduct.id,
+            productId: matchedProduct.productId,
+            label: matchedProduct.label,
+            description: matchedProduct.description,
+            category: matchedProduct.category,
+            priceLabel: matchedProduct.priceLabel,
+            priceAmount: matchedProduct.priceAmount,
+            quantityValue: matchedProduct.quantityValue,
+            quantityUnit: matchedProduct.quantityUnit,
+            packLabel: matchedProduct.packLabel,
+          };
           user.data.productType = matchedProduct.label;
-          user.data.productDetailsPrompt =
-            matchedProduct.prompt || automation.productDetailsPrompt;
-          await sendMessage(user.data.productDetailsPrompt);
-          user.step = "PRODUCT_REQUIREMENTS";
+          await sendMessage(buildProductDetailsMessage(user.data.selectedProduct));
+          user.step = "PRODUCT_CONFIRM_SELECTION";
           return;
         }
-        await sendMessage(automation.productsMenuText);
+        await sendMessage(buildProductSelectionMessage(automation));
         user.step = "PRODUCTS_MENU";
         return;
       }
       if (resolvedIntent === "EXECUTIVE") {
-        user.data.reason = "Talk to an Executive";
+        user.data.reason = "Support";
         await sendMessage("Sure 👍\nPlease tell us briefly *how we can help you today*.");
         user.step = "EXECUTIVE_MESSAGE";
         return;
@@ -2812,10 +2585,21 @@ const handleIncomingMessage = async ({
         mainChoice === "SERVICES"
           ? "Services"
           : mainChoice === "PRODUCTS"
-          ? "Products"
-          : "Talk to an Executive";
+            ? "Products"
+            : mainChoice === "TRACK_ORDER"
+              ? "Track Order"
+              : "Support";
 
       await delay(1000);
+      if (mainChoice === "TRACK_ORDER") {
+        const tracked = await fetchRecentOrdersForPhone({
+          adminId: assignedAdminId,
+          phone: user.data.deliveryPhone || phone,
+        });
+        await sendMessage(buildTrackingMessage(tracked));
+        user.step = "MENU";
+        return;
+      }
       if (mainChoice === "SERVICES" && matchedService && matchedService.id === "executive") {
         await sendMessage("Sure 👍\nPlease tell us briefly *how we can help you today*.");
         user.step = "EXECUTIVE_MESSAGE";
@@ -2839,17 +2623,27 @@ const handleIncomingMessage = async ({
         user.data.serviceType = matchedService.label;
         await sendMessage(
           matchedService.prompt ||
-            "Please share your service details (DOB, time, place, and concern)."
+          "Please share your service details (DOB, time, place, and concern)."
         );
         user.step = "SERVICE_DETAILS";
         return;
       }
       if (mainChoice === "PRODUCTS" && matchedProduct && matchedProduct.id !== "main_menu") {
+        user.data.selectedProduct = {
+          id: matchedProduct.id,
+          productId: matchedProduct.productId,
+          label: matchedProduct.label,
+          description: matchedProduct.description,
+          category: matchedProduct.category,
+          priceLabel: matchedProduct.priceLabel,
+          priceAmount: matchedProduct.priceAmount,
+          quantityValue: matchedProduct.quantityValue,
+          quantityUnit: matchedProduct.quantityUnit,
+          packLabel: matchedProduct.packLabel,
+        };
         user.data.productType = matchedProduct.label;
-        user.data.productDetailsPrompt =
-          matchedProduct.prompt || automation.productDetailsPrompt;
-        await sendMessage(user.data.productDetailsPrompt);
-        user.step = "PRODUCT_REQUIREMENTS";
+        await sendMessage(buildProductDetailsMessage(user.data.selectedProduct));
+        user.step = "PRODUCT_CONFIRM_SELECTION";
         return;
       }
       if (mainChoice === "PRODUCTS" && !automation.supportsProducts) {
@@ -2863,7 +2657,7 @@ const handleIncomingMessage = async ({
         return;
       }
       if (mainChoice === "PRODUCTS") {
-        await sendMessage(automation.productsMenuText);
+        await sendMessage(buildProductSelectionMessage(automation));
         user.step = "PRODUCTS_MENU";
         return;
       }
@@ -2959,7 +2753,7 @@ const handleIncomingMessage = async ({
       await delay(1000);
       await sendMessage(
         selectedService.prompt ||
-          "Please share your service details (DOB, time, place, and concern)."
+        "Please share your service details (DOB, time, place, and concern)."
       );
       user.step = "SERVICE_DETAILS";
       return;
@@ -2983,13 +2777,59 @@ const handleIncomingMessage = async ({
       }
 
       user.data.reason = "Products";
+      user.data.selectedProduct = {
+        id: selectedProduct.id,
+        productId: selectedProduct.productId,
+        label: selectedProduct.label,
+        description: selectedProduct.description,
+        category: selectedProduct.category,
+        priceLabel: selectedProduct.priceLabel,
+        priceAmount: selectedProduct.priceAmount,
+        quantityValue: selectedProduct.quantityValue,
+        quantityUnit: selectedProduct.quantityUnit,
+        packLabel: selectedProduct.packLabel,
+      };
       user.data.productType = selectedProduct.label;
-
       await delay(1000);
-      user.data.productDetailsPrompt =
-        selectedProduct.prompt || automation.productDetailsPrompt;
-      await sendMessage(user.data.productDetailsPrompt);
-      user.step = "PRODUCT_REQUIREMENTS";
+      await sendMessage(buildProductDetailsMessage(user.data.selectedProduct));
+      user.step = "PRODUCT_CONFIRM_SELECTION";
+      return;
+    }
+
+    /* ===============================
+       STEP 4D: PRODUCT CONFIRMATION
+       =============================== */
+    if (user.step === "PRODUCT_CONFIRM_SELECTION") {
+      const choiceNumber = extractNumber(lower);
+      if (choiceNumber === "1" || YES_KEYWORDS.includes(lower) || lower.includes("yes")) {
+        await delay(500);
+        await sendMessage("How many would you like to order?\n(Example: 1, 2, 3)");
+        user.step = "PRODUCT_QUANTITY";
+        return;
+      }
+      if (choiceNumber === "2" || NO_KEYWORDS.includes(lower) || lower.includes("other product")) {
+        await delay(500);
+        await sendMessage(buildProductSelectionMessage(automation));
+        user.step = "PRODUCTS_MENU";
+        return;
+      }
+      await sendMessage("Please reply with 1 for Yes or 2 to view other products.");
+      return;
+    }
+
+    /* ===============================
+       STEP 4E: PRODUCT QUANTITY
+       =============================== */
+    if (user.step === "PRODUCT_QUANTITY" || user.step === "PRODUCT_REQUIREMENTS") {
+      const quantityValue = Number(extractNumber(lower));
+      if (!Number.isFinite(quantityValue) || quantityValue <= 0 || quantityValue > 999) {
+        await sendMessage("Please enter a valid quantity (example: 1, 2, 3).");
+        return;
+      }
+      user.data.productQuantity = quantityValue;
+      await delay(500);
+      await sendMessage("Great 👍\nCan I have your full name?");
+      user.step = "PRODUCT_CUSTOMER_NAME";
       return;
     }
 
@@ -3013,53 +2853,198 @@ const handleIncomingMessage = async ({
     }
 
     /* ===============================
-       STEP 6: PRODUCT REQUIREMENTS
+       STEP 6: PRODUCT CUSTOMER NAME
        =============================== */
-    if (user.step === "PRODUCT_REQUIREMENTS") {
-      user.data.productDetails = sanitizeText(messageText, 1000);
-
-      await delay(1000);
-      await sendMessage(
-        "Please share your *full delivery address with pin code* (पूरा पता + पिन कोड)."
-      );
-      user.step = "PRODUCT_ADDRESS";
+    if (user.step === "PRODUCT_CUSTOMER_NAME") {
+      const normalizedName = sanitizeNameUpper(messageText);
+      if (!normalizedName) {
+        await sendMessage("Please share a valid full name.");
+        return;
+      }
+      user.data.name = normalizedName;
+      user.name = normalizedName;
+      await delay(500);
+      await sendMessage("Please share your delivery address.");
+      user.step = "PRODUCT_CUSTOMER_ADDRESS";
       return;
     }
 
     /* ===============================
        STEP 7: PRODUCT ADDRESS
        =============================== */
-    if (user.step === "PRODUCT_ADDRESS") {
+    if (user.step === "PRODUCT_CUSTOMER_ADDRESS" || user.step === "PRODUCT_ADDRESS") {
       user.data.address = sanitizeText(messageText, 600);
+      if (!user.data.address) {
+        await sendMessage("Please share a valid delivery address.");
+        return;
+      }
 
-      await delay(1000);
-      await sendMessage("Alternate contact number (optional). If none, reply *NA*.");
-      user.step = "PRODUCT_ALT_CONTACT";
+      await delay(500);
+      await sendMessage("Your phone number for delivery updates?");
+      user.step = "PRODUCT_CUSTOMER_PHONE";
       return;
     }
 
     /* ===============================
-       STEP 8: PRODUCT ALT CONTACT
+       STEP 8: PRODUCT PHONE
        =============================== */
-    if (user.step === "PRODUCT_ALT_CONTACT") {
-      const altContact = sanitizePhone(messageText);
-      user.data.altContact = altContact || "NA";
-      user.data.message = buildRequirementSummary({ user, phone });
-
-      await maybeFinalizeLead({
-        user,
-        from: sender,
-        phone,
-        assignedAdminId,
-        client,
-        users,
-        sendMessage,
-      });
+    if (user.step === "PRODUCT_CUSTOMER_PHONE" || user.step === "PRODUCT_ALT_CONTACT") {
+      const deliveryPhone = sanitizePhone(messageText);
+      if (!deliveryPhone) {
+        await sendMessage("Please share a valid phone number for delivery updates.");
+        return;
+      }
+      user.data.deliveryPhone = deliveryPhone;
+      await delay(500);
+      await sendMessage("Any note for delivery? (or type NO)");
+      user.step = "PRODUCT_DELIVERY_NOTE";
       return;
     }
 
     /* ===============================
-       STEP 9: EXECUTIVE MESSAGE
+       STEP 9: PRODUCT DELIVERY NOTE
+       =============================== */
+    if (user.step === "PRODUCT_DELIVERY_NOTE") {
+      const note = sanitizeText(messageText, 300);
+      user.data.deliveryNote = !note || ["no", "na", "none"].includes(lower) ? "NO" : note;
+      await delay(500);
+      await sendMessage(buildOrderSummaryMessage(user));
+      user.step = "PRODUCT_ORDER_SUMMARY";
+      return;
+    }
+
+    /* ===============================
+       STEP 10: ORDER SUMMARY CONFIRMATION
+       =============================== */
+    if (user.step === "PRODUCT_ORDER_SUMMARY") {
+      const wantsConfirm = lower === "confirm" || lower.includes("confirm") || YES_KEYWORDS.includes(lower);
+      const wantsEdit = NO_KEYWORDS.includes(lower) || lower.includes("edit") || lower.includes("change");
+
+      if (wantsEdit) {
+        resetProductFlowData(user);
+        await delay(500);
+        await sendMessage(buildProductSelectionMessage(automation));
+        user.step = "PRODUCTS_MENU";
+        return;
+      }
+
+      if (!wantsConfirm) {
+        await sendMessage("Please type *CONFIRM* to continue, or type *NO* to choose another product.");
+        return;
+      }
+
+      await delay(500);
+      await sendMessage("Payment Method:\n1️⃣ Cash on Delivery\n2️⃣ Pay Now");
+      user.step = "PRODUCT_PAYMENT_METHOD";
+      return;
+    }
+
+    /* ===============================
+       STEP 11: PAYMENT METHOD
+       =============================== */
+    if (user.step === "PRODUCT_PAYMENT_METHOD") {
+      const paymentNumber = extractNumber(lower);
+      const wantsCod =
+        paymentNumber === "1" ||
+        textHasAny(lower, ["cod", "cash on delivery", "cash delivery", "cash"]);
+      const wantsPayNow =
+        paymentNumber === "2" ||
+        textHasAny(lower, ["pay now", "online", "upi", "gpay", "phonepe", "card"]);
+
+      if (!wantsCod && !wantsPayNow) {
+        await sendMessage("Please choose payment method:\n1️⃣ Cash on Delivery\n2️⃣ Pay Now");
+        return;
+      }
+
+      if (wantsPayNow) {
+        await delay(500);
+        if (PAYMENT_LINK) {
+          await sendMessage(
+            `Please complete payment using this secure link 👇\n${PAYMENT_LINK}\n\nReply *DONE* after payment.`
+          );
+        } else {
+          await sendMessage("Please complete payment and reply *DONE* after payment.");
+        }
+        user.step = "PRODUCT_PAYMENT_CONFIRM";
+        return;
+      }
+
+      const createdOrder = await createWhatsAppOrder({
+        user,
+        adminId: assignedAdminId,
+        fallbackPhone: phone,
+        paymentMethod: "cod",
+        paymentStatus: "pending",
+      });
+      const orderRef = createdOrder?.order_number || `#${createdOrder?.id || "N/A"}`;
+      const qty = Number(user.data.productQuantity || 1);
+      const productName = user.data.selectedProduct?.label || user.data.productType || "Product";
+      const packLabel = user.data.selectedProduct?.packLabel
+        ? ` x ${user.data.selectedProduct.packLabel}`
+        : "";
+
+      await sendMessage(
+        `🎉 Your order is confirmed!\n\nOrder ID: ${orderRef}\nProduct: ${productName}\nQuantity: ${qty}${packLabel}\nExpected Delivery: 3–5 days\n\nWe'll send updates here on WhatsApp.\nNeed help? Type SUPPORT.`
+      );
+      await delay(400);
+      await sendMessage(
+        `📦 Shipping Update\nYour order ${orderRef} has been placed and is being prepared.\nType *TRACK ORDER* anytime for latest updates.`
+      );
+      await delay(400);
+      await sendMessage(
+        "⭐ Review Request\nHope you loved your order ❤️\nAfter delivery, please rate your experience ⭐⭐⭐⭐⭐"
+      );
+      resetProductFlowData(user);
+      user.step = "MENU";
+      return;
+    }
+
+    /* ===============================
+       STEP 12: PAYMENT VERIFICATION
+       =============================== */
+    if (user.step === "PRODUCT_PAYMENT_CONFIRM") {
+      const paymentDone = lower.includes("done") || lower.includes("paid") || lower.includes("completed");
+      if (!paymentDone) {
+        await sendMessage("Reply *DONE* once payment is completed.");
+        return;
+      }
+
+      await delay(500);
+      await sendMessage("Thanks 🙌\nWe are verifying your payment.");
+
+      const createdOrder = await createWhatsAppOrder({
+        user,
+        adminId: assignedAdminId,
+        fallbackPhone: phone,
+        paymentMethod: "online",
+        paymentStatus: "paid",
+      });
+      const orderRef = createdOrder?.order_number || `#${createdOrder?.id || "N/A"}`;
+      const qty = Number(user.data.productQuantity || 1);
+      const productName = user.data.selectedProduct?.label || user.data.productType || "Product";
+      const packLabel = user.data.selectedProduct?.packLabel
+        ? ` x ${user.data.selectedProduct.packLabel}`
+        : "";
+
+      await delay(400);
+      await sendMessage(
+        `🎉 Your order is confirmed!\n\nOrder ID: ${orderRef}\nProduct: ${productName}\nQuantity: ${qty}${packLabel}\nExpected Delivery: 3–5 days\n\nWe'll send updates here on WhatsApp.\nNeed help? Type SUPPORT.`
+      );
+      await delay(400);
+      await sendMessage(
+        `📦 Shipping Update\nYour order ${orderRef} has been placed and is being prepared.\nType *TRACK ORDER* anytime for latest updates.`
+      );
+      await delay(400);
+      await sendMessage(
+        "⭐ Review Request\nHope you loved your order ❤️\nAfter delivery, please rate your experience ⭐⭐⭐⭐⭐"
+      );
+      resetProductFlowData(user);
+      user.step = "MENU";
+      return;
+    }
+
+    /* ===============================
+       STEP 13: EXECUTIVE MESSAGE
        =============================== */
     if (user.step === "EXECUTIVE_MESSAGE") {
       user.data.executiveMessage = sanitizeText(messageText, 1000);

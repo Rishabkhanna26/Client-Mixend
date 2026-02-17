@@ -45,10 +45,23 @@ export async function PATCH(req, context) {
     }
 
     if (admin_tier === 'super_admin' && target.admin_tier !== 'super_admin') {
-      return Response.json(
-        { success: false, error: 'Promoting another admin to super admin is not allowed.' },
-        { status: 400 }
-      );
+      const superCount = await countSuperAdmins();
+      if (superCount >= 2) {
+        return Response.json(
+          { success: false, error: 'Only 2 super admins are allowed at a time.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (admin_tier === 'client_admin' && target.admin_tier === 'super_admin') {
+      const superCount = await countSuperAdmins();
+      if (superCount <= 1) {
+        return Response.json(
+          { success: false, error: 'At least one super admin is required.' },
+          { status: 400 }
+        );
+      }
     }
 
     if (adminId === user.id) {
@@ -127,8 +140,14 @@ export async function DELETE(req, context) {
       }
     }
 
-    const result = await deleteAdminAndData(adminId);
+    const result = await deleteAdminAndData(adminId, user.id);
     if (!result.ok) {
+      if (result.reason === 'no_super_admin_to_transfer') {
+        return Response.json(
+          { success: false, error: 'No super admin available to transfer contacts.' },
+          { status: 400 }
+        );
+      }
       return Response.json({ success: false, error: 'Admin not found' }, { status: 404 });
     }
 

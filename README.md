@@ -44,6 +44,7 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
 ```
 npm run setup-db
 ```
+This initializes schema and defaults only. It does not seed dummy/sample data.
 
 ## Backend (WhatsApp + API)
 ```

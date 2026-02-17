@@ -46,7 +46,7 @@ export async function POST(request) {
     const connection = await getConnection();
     try {
       const [rows] = await connection.execute(
-        `SELECT id, name, email
+        `SELECT id, name, email, admin_tier, reset_token_hash, reset_expires_at
          FROM admins
          WHERE LOWER(email) = ?${phoneClause} OR id = ?
          LIMIT 1`,
@@ -60,6 +60,17 @@ export async function POST(request) {
       const user = rows[0];
       if (!user.email) {
         return NextResponse.json({ error: 'No email found for this account' }, { status: 400 });
+      }
+
+      // For super admins, do not issue multiple temp passwords while one is still valid.
+      if (user.admin_tier === 'super_admin' && user.reset_token_hash && user.reset_expires_at) {
+        const expiresAt = new Date(user.reset_expires_at);
+        if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() > Date.now()) {
+          return NextResponse.json({
+            success: true,
+            message: 'A temporary password has already been sent. Please use it before requesting another.',
+          });
+        }
       }
 
       const transporter = buildTransporter();

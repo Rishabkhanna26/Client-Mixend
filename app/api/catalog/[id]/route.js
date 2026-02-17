@@ -25,6 +25,29 @@ const parseNumber = (value) => {
   return num;
 };
 
+const parseDurationUnit = (value) => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return undefined;
+  if (['minutes', 'minute', 'min', 'mins'].includes(raw)) return 'minutes';
+  if (['hours', 'hour', 'hr', 'hrs'].includes(raw)) return 'hours';
+  if (['weeks', 'week'].includes(raw)) return 'weeks';
+  if (['months', 'month'].includes(raw)) return 'months';
+  return undefined;
+};
+
+const toDurationMinutes = (value, unit) => {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return undefined;
+  const factors = {
+    minutes: 1,
+    hours: 60,
+    weeks: 60 * 24 * 7,
+    months: 60 * 24 * 30,
+  };
+  const normalizedUnit = parseDurationUnit(unit) || 'minutes';
+  return Math.round(num * (factors[normalizedUnit] || 1));
+};
+
 export async function GET(request, { params }) {
   try {
     const user = await requireAuth();
@@ -92,8 +115,24 @@ export async function PUT(request, { params }) {
       updates.price_label = String(body?.price_label || '').trim();
     }
 
-    if (Object.prototype.hasOwnProperty.call(body, 'duration_minutes')) {
-      updates.duration_minutes = parseNumber(body?.duration_minutes);
+    if (
+      Object.prototype.hasOwnProperty.call(body, 'duration_value') ||
+      Object.prototype.hasOwnProperty.call(body, 'duration_unit') ||
+      Object.prototype.hasOwnProperty.call(body, 'duration_minutes')
+    ) {
+      updates.duration_value = parseNumber(body?.duration_value);
+      updates.duration_unit = parseDurationUnit(body?.duration_unit);
+      updates.duration_minutes =
+        toDurationMinutes(body?.duration_value, body?.duration_unit) ??
+        parseNumber(body?.duration_minutes);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'quantity_value')) {
+      updates.quantity_value = parseNumber(body?.quantity_value);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'quantity_unit')) {
+      updates.quantity_unit = String(body?.quantity_unit || '').trim();
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'details_prompt')) {

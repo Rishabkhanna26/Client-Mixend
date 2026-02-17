@@ -135,60 +135,47 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="auth-v2-shell auth-v2-login relative min-h-screen overflow-hidden px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
-      <div className="pointer-events-none absolute inset-0">
-        <span className="auth-v2-blob auth-v2-blob-one" />
-        <span className="auth-v2-blob auth-v2-blob-two" />
-        <span className="auth-v2-blob auth-v2-blob-three" />
-        <span className="auth-v2-blob auth-v2-blob-four" />
-        <span className="auth-v2-beam auth-v2-beam-one" />
-        <span className="auth-v2-beam auth-v2-beam-two" />
-        <span className="auth-v2-ring auth-v2-ring-one" />
-        <span className="auth-v2-ring auth-v2-ring-two" />
+    <div className="auth-v3-shell auth-v3-login relative min-h-screen overflow-hidden px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
+      <div className="auth-v3-bg pointer-events-none absolute inset-0">
+        <span className="auth-v3-orb auth-v3-orb-one" />
+        <span className="auth-v3-orb auth-v3-orb-two" />
+        <span className="auth-v3-orb auth-v3-orb-three" />
+        <span className="auth-v3-grid-lines" />
       </div>
 
-      <div className="auth-v2-wrap relative z-10 mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-6xl items-center">
-        <div className="grid w-full gap-5 lg:grid-cols-[1.05fr_0.95fr]">
-          <aside className="auth-v2-panel hidden rounded-[2rem] border border-white/20 bg-aa-dark-blue/90 p-8 text-white shadow-[0_26px_70px_rgba(10,31,68,0.45)] backdrop-blur lg:flex lg:flex-col lg:justify-between">
+      <div className="auth-v3-wrap relative z-10 mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-6xl items-center">
+        <div className="auth-v3-layout grid w-full gap-5 lg:grid-cols-[1.04fr_0.96fr]">
+          <aside className="auth-v3-side hidden rounded-[2rem] p-8 lg:flex lg:flex-col lg:justify-between">
             <div>
-              <p className="inline-flex rounded-full border border-white/25 bg-white/10 px-4 py-1 text-xs font-semibold tracking-[0.24em] uppercase">
-                AlgoAura CRM
-              </p>
+              <p className="auth-v3-pill">AlgoAura CRM</p>
               <h2 className="mt-6 text-4xl font-black leading-tight">
-                Welcome back to your WhatsApp growth hub.
+                Your WhatsApp operations, all in one command center.
               </h2>
               <p className="mt-4 text-sm text-white/80">
-                Track chats, leads, orders, and appointments from one dashboard built for fast teams.
+                Stay on top of leads, chats, appointments, and orders without switching tools.
               </p>
             </div>
-            <div className="space-y-3 text-sm text-white/85">
-              <p className="rounded-xl border border-white/15 bg-white/10 px-4 py-3">Real-time customer communication</p>
-              <p className="rounded-xl border border-white/15 bg-white/10 px-4 py-3">Role-based access and secure controls</p>
-              <p className="rounded-xl border border-white/15 bg-white/10 px-4 py-3">Automation + AI replies when you need speed</p>
+            <div className="space-y-3 text-sm text-white/90">
+              <p className="auth-v3-note">Single dashboard for conversations and sales pipeline</p>
+              <p className="auth-v3-note">Role-based access with secure admin controls</p>
+              <p className="auth-v3-note">Automation-ready workflows for faster response time</p>
             </div>
           </aside>
 
-          <section className="auth-v2-card rounded-[2rem] border border-white/60 bg-white/92 p-6 shadow-[0_26px_65px_rgba(10,31,68,0.22)] backdrop-blur-sm sm:p-8 lg:p-10">
-            <div className="mb-7 flex justify-center">
-              <div className="auth-v2-logo-wrap">
-                <span className="auth-v2-logo-backdrop" aria-hidden="true" />
-                <span className="auth-v2-logo-orbit auth-v2-logo-orbit-one" aria-hidden="true" />
-                <span className="auth-v2-logo-orbit auth-v2-logo-orbit-two" aria-hidden="true" />
-                <div className="auth-v2-logo-core">
-                  <Image
-                    src="/algoaura_logo.png"
-                    alt="AlgoAura"
-                    width={360}
-                    height={110}
-                    priority
-                    className="auth-v2-logo-img"
-                  />
-                </div>
-              </div>
+          <section className="auth-v3-card rounded-[2rem] p-6 sm:p-8 lg:p-10">
+            <div className="auth-v3-brand mb-7 flex justify-center">
+              <Image
+                src="/algoaura_logo.png"
+                alt="AlgoAura"
+                width={360}
+                height={110}
+                priority
+                className="auth-v3-logo"
+              />
             </div>
 
             <h1 className="text-center text-3xl font-black text-aa-dark-blue">Sign in</h1>
-            <p className="mt-2 text-center text-sm text-aa-gray">Access your workspace and continue managing customers.</p>
+            <p className="mt-2 text-center text-sm text-aa-gray">Log in to continue managing your workspace.</p>
 
             {error && (
               <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -219,7 +206,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 transition hover:text-gray-600"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} />
@@ -230,21 +217,21 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="mt-2 w-full rounded-xl py-3 text-base"
+                className="mt-2 w-full rounded-xl py-3 text-base shadow-[0_12px_24px_rgb(var(--aa-orange)/0.26)]"
                 icon={<FontAwesomeIcon icon={faRightToBracket} style={{ fontSize: 18 }} />}
               >
                 {loading ? 'Logging in...' : 'Login'}
               </Button>
             </form>
 
-            <div className="auth-v2-divider my-6">
+            <div className="auth-v3-divider my-6">
               <span>or</span>
             </div>
 
             <Button
               type="button"
               variant="outline"
-              className="w-full rounded-xl py-3 text-base"
+              className="auth-v3-google-btn w-full rounded-xl py-3 text-base"
               onClick={() => {
                 window.location.href = '/api/auth/google/start';
               }}
@@ -252,7 +239,7 @@ export default function LoginPage() {
               Continue with Google
             </Button>
 
-            <div className="mt-5 text-center">
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm">
               <button
                 type="button"
                 onClick={() => {
@@ -260,22 +247,18 @@ export default function LoginPage() {
                   setForgotError('');
                   setForgotIdentifier(email || '');
                 }}
-                className="text-sm font-semibold text-aa-orange hover:underline"
+                className="font-semibold text-aa-orange hover:underline"
               >
                 Forgot password?
               </button>
-            </div>
-
-            <p className="mt-6 text-center text-sm text-aa-gray">
-              New here?{' '}
               <button
                 type="button"
                 onClick={() => router.push('/signup')}
-                className="font-semibold text-aa-orange hover:underline"
+                className="font-semibold text-aa-dark-blue hover:text-aa-orange"
               >
                 Create an account
               </button>
-            </p>
+            </div>
           </section>
         </div>
       </div>

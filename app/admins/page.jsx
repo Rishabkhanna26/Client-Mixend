@@ -360,7 +360,8 @@ export default function AdminsPage() {
                 const disablePromoteToSuper =
                   option.value === 'super_admin' &&
                   editForm.id !== user?.id &&
-                  editForm.admin_tier !== 'super_admin';
+                  editForm.admin_tier !== 'super_admin' &&
+                  superCount >= 2;
                 return (
                   <button
                     key={option.value}

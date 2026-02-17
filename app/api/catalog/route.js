@@ -27,6 +27,29 @@ const parseNumber = (value, fallback = null) => {
   return num;
 };
 
+const parseDurationUnit = (value, fallback = 'minutes') => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return fallback;
+  if (['minutes', 'minute', 'min', 'mins'].includes(raw)) return 'minutes';
+  if (['hours', 'hour', 'hr', 'hrs'].includes(raw)) return 'hours';
+  if (['weeks', 'week'].includes(raw)) return 'weeks';
+  if (['months', 'month'].includes(raw)) return 'months';
+  return fallback;
+};
+
+const toDurationMinutes = (value, unit) => {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  const factors = {
+    minutes: 1,
+    hours: 60,
+    weeks: 60 * 24 * 7,
+    months: 60 * 24 * 30,
+  };
+  const factor = factors[parseDurationUnit(unit, 'minutes')] || 1;
+  return Math.round(num * factor);
+};
+
 export async function GET(request) {
   try {
     const user = await requireAuth();
@@ -90,7 +113,13 @@ export async function POST(request) {
       category: String(body?.category || '').trim(),
       description: String(body?.description || '').trim(),
       price_label: String(body?.price_label || '').trim(),
-      duration_minutes: itemType === 'service' ? parseNumber(body?.duration_minutes) : null,
+      duration_value: parseNumber(body?.duration_value),
+      duration_unit: parseDurationUnit(body?.duration_unit),
+      duration_minutes:
+        toDurationMinutes(body?.duration_value, body?.duration_unit) ??
+        parseNumber(body?.duration_minutes),
+      quantity_value: itemType === 'product' ? parseNumber(body?.quantity_value) : null,
+      quantity_unit: itemType === 'product' ? String(body?.quantity_unit || '').trim() : null,
       details_prompt: String(body?.details_prompt || '').trim(),
       keywords: body?.keywords,
       is_active: parseBoolean(body?.is_active, true),

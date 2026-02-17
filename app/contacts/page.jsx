@@ -235,7 +235,7 @@ export default function ContactsPage() {
       <div className="flex items-center justify-center min-h-[50vh]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-aa-orange mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading contacts...</p>
+          <p className="text-gray-600">Loading leads...</p>
         </div>
       </div>
     );
@@ -246,7 +246,7 @@ export default function ContactsPage() {
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <FontAwesomeIcon icon={faUsers} className="text-aa-orange" style={{ fontSize: 32 }} />
-          Contacts
+          Leads
         </h1>
         
         <div className="relative">
@@ -269,7 +269,7 @@ export default function ContactsPage() {
         {filteredUsers.length === 0 ? (
           <div className="col-span-full text-center py-12 bg-gray-50 rounded-lg">
             <FontAwesomeIcon icon={faUsers} className="mx-auto text-gray-400 mb-2" style={{ fontSize: 48 }} />
-            <p className="text-gray-500">No contacts found</p>
+            <p className="text-gray-500">No leads found</p>
           </div>
         ) : (
           filteredUsers.map((user) => (
@@ -347,11 +347,11 @@ export default function ContactsPage() {
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title="Contact Details"
+        title="Lead Details"
         size="md"
       >
         {!selectedUser ? (
-          <p className="text-aa-gray">No contact selected.</p>
+          <p className="text-aa-gray">No lead selected.</p>
         ) : (
           <div className="space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -381,8 +381,8 @@ export default function ContactsPage() {
               {automationUpdatingId === selectedUser.id
                 ? 'Updating...'
                 : selectedUser.automation_disabled
-                  ? 'Enable Automation for This Contact'
-                  : 'Disable Automation for This Contact'}
+                  ? 'Enable Automation for This Lead'
+                  : 'Disable Automation for This Lead'}
             </button>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -413,11 +413,11 @@ export default function ContactsPage() {
               {modalLoading ? (
                 <p className="text-aa-gray">Loading messages...</p>
               ) : !latestRequirement ? (
-                <p className="text-aa-gray">No lead details found for this contact.</p>
+                <p className="text-aa-gray">No lead details found for this lead.</p>
               ) : (
                 <div className="space-y-3">
                   <div className="p-4 border border-gray-200 rounded-lg">
-                    <p className="text-xs text-aa-gray uppercase mb-1">Contact Reason</p>
+                    <p className="text-xs text-aa-gray uppercase mb-1">Lead Reason</p>
                     <p className="font-semibold text-aa-text-dark mb-2">
                       {latestRequirement.requirement_text || '—'}
                     </p>
@@ -432,11 +432,11 @@ export default function ContactsPage() {
       <Modal
         isOpen={chatOpen}
         onClose={() => setChatOpen(false)}
-        title={chatUser ? `Chat with ${chatUser.name || 'Contact'}` : 'Chat'}
+        title={chatUser ? `Chat with ${chatUser.name || 'Lead'}` : 'Chat'}
         size="lg"
       >
         {!chatUser ? (
-          <p className="text-aa-gray">No contact selected.</p>
+          <p className="text-aa-gray">No lead selected.</p>
         ) : (
           <div className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -463,7 +463,7 @@ export default function ContactsPage() {
                 ) : chatError ? (
                   <p className="text-red-600">{chatError}</p>
                 ) : chatMessages.length === 0 ? (
-                  <p className="text-aa-gray">No messages found for this contact.</p>
+                  <p className="text-aa-gray">No messages found for this lead.</p>
                 ) : (
                   <div className="space-y-4">
                     {chatHasMore && (

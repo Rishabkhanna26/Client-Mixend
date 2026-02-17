@@ -44,7 +44,7 @@ export default function ReportsPage() {
       </div>
     );
   }
-conc
+
   const messageChartData = reports?.messageStats?.map(stat => ({
     date: new Date(stat.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     messages: stat.count

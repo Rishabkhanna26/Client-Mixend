@@ -31,16 +31,27 @@ const DEFAULT_SERVICE_PROMPT =
   'Please share your service details (preferred date/time, requirements, and any specific concerns).';
 const DEFAULT_PRODUCT_PROMPT =
   'Please share product details (variant/size, quantity, and any preferences).';
+const DURATION_UNIT_OPTIONS = [
+  { value: 'minutes', label: 'Minutes' },
+  { value: 'hours', label: 'Hours' },
+  { value: 'weeks', label: 'Weeks' },
+  { value: 'months', label: 'Months' },
+];
+const PRODUCT_QUANTITY_UNITS = ['g', 'kg', 'ml', 'liter', 'meter', 'pcs', 'custom'];
 
 const buildEmptyForm = (type = 'service') => ({
   item_type: type,
   name: '',
   category: '',
   price_label: '',
-  duration_minutes: '',
+  duration_value: '',
+  duration_unit: 'minutes',
   description: '',
   details_prompt: type === 'service' ? DEFAULT_SERVICE_PROMPT : DEFAULT_PRODUCT_PROMPT,
   keywords: '',
+  quantity_value: '',
+  quantity_unit: 'kg',
+  quantity_unit_custom: '',
   is_active: true,
   sort_order: 0,
   is_bookable: false,
@@ -54,6 +65,45 @@ const formatKeywords = (keywords) => {
 const parseNumber = (value, fallback = null) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
+};
+
+const DURATION_UNIT_MINUTE_FACTORS = {
+  minutes: 1,
+  hours: 60,
+  weeks: 60 * 24 * 7,
+  months: 60 * 24 * 30,
+};
+
+const normalizePriceLabel = (value) => {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (text.includes('₹')) {
+    return text.replace(/₹\s*/g, '₹ ').replace(/\s{2,}/g, ' ').trim();
+  }
+  let normalized = text.replace(/^\s*(?:inr|rs\.?|rupees?)\s*/i, '₹ ');
+  if (!normalized.includes('₹') && /^\d/.test(normalized)) {
+    normalized = `₹ ${normalized}`;
+  }
+  return normalized.replace(/\s{2,}/g, ' ').trim();
+};
+
+const formatDurationLabel = (item) => {
+  const durationValue = parseNumber(item?.duration_value, null);
+  const durationUnit = String(item?.duration_unit || '').trim().toLowerCase();
+  if (durationValue && durationUnit) {
+    const unitLabel = durationValue === 1 ? durationUnit.replace(/s$/, '') : durationUnit;
+    return `${durationValue} ${unitLabel}`;
+  }
+  const durationMinutes = parseNumber(item?.duration_minutes, null);
+  if (durationMinutes) return `${durationMinutes} min`;
+  return '';
+};
+
+const formatQuantityLabel = (item) => {
+  const value = parseNumber(item?.quantity_value, null);
+  const unit = String(item?.quantity_unit || '').trim();
+  if (!value) return '';
+  return `${value} ${unit || 'unit'}`;
 };
 
 export default function CatalogPage() {
@@ -148,16 +198,23 @@ export default function CatalogPage() {
   };
 
   const openEditModal = (item) => {
+    const itemQuantityUnit = String(item.quantity_unit || '').trim().toLowerCase();
+    const supportsPresetUnit = PRODUCT_QUANTITY_UNITS.includes(itemQuantityUnit);
     setEditingItem(item);
     setForm({
       item_type: item.item_type,
       name: item.name || '',
       category: item.category || '',
-      price_label: item.price_label || '',
-      duration_minutes: item.duration_minutes ?? '',
+      price_label: normalizePriceLabel(item.price_label || ''),
+      duration_value: item.duration_value ?? item.duration_minutes ?? '',
+      duration_unit: item.duration_unit || 'minutes',
       description: item.description || '',
       details_prompt: item.details_prompt || (item.item_type === 'service' ? DEFAULT_SERVICE_PROMPT : DEFAULT_PRODUCT_PROMPT),
       keywords: formatKeywords(item.keywords),
+      quantity_value: item.quantity_value ?? '',
+      quantity_unit: supportsPresetUnit ? itemQuantityUnit : item.quantity_value ? 'custom' : 'kg',
+      quantity_unit_custom:
+        item.quantity_value && !supportsPresetUnit ? String(item.quantity_unit || '') : '',
       is_active: Boolean(item.is_active),
       sort_order: item.sort_order ?? 0,
       is_bookable: Boolean(item.is_bookable),
@@ -181,9 +238,27 @@ export default function CatalogPage() {
       item_type: form.item_type,
       name: form.name.trim(),
       category: form.category.trim(),
-      price_label: form.price_label.trim(),
+      price_label: normalizePriceLabel(form.price_label),
+      duration_value:
+        form.item_type === 'service' ? parseNumber(form.duration_value, null) : null,
+      duration_unit: form.item_type === 'service' ? form.duration_unit || 'minutes' : null,
       duration_minutes:
-        form.item_type === 'service' ? parseNumber(form.duration_minutes, null) : null,
+        form.item_type === 'service'
+          ? (() => {
+              const durationValue = parseNumber(form.duration_value, null);
+              const factor = DURATION_UNIT_MINUTE_FACTORS[form.duration_unit] || 1;
+              if (!durationValue || durationValue <= 0) return null;
+              return Math.round(durationValue * factor);
+            })()
+          : null,
+      quantity_value:
+        form.item_type === 'product' ? parseNumber(form.quantity_value, null) : null,
+      quantity_unit:
+        form.item_type === 'product' && parseNumber(form.quantity_value, null)
+          ? (form.quantity_unit === 'custom'
+              ? form.quantity_unit_custom.trim()
+              : form.quantity_unit || 'unit')
+          : null,
       description: form.description.trim(),
       details_prompt: form.details_prompt.trim(),
       keywords: form.keywords,
@@ -255,8 +330,13 @@ export default function CatalogPage() {
           item_type: item.item_type,
           name: `${item.name} (Copy)`,
           category: item.category || '',
-          price_label: item.price_label || '',
-          duration_minutes: item.duration_minutes ?? null,
+          price_label: normalizePriceLabel(item.price_label || ''),
+          duration_value:
+            item.item_type === 'service' ? item.duration_value ?? item.duration_minutes ?? null : null,
+          duration_unit: item.item_type === 'service' ? item.duration_unit || 'minutes' : null,
+          duration_minutes: item.item_type === 'service' ? item.duration_minutes ?? null : null,
+          quantity_value: item.item_type === 'product' ? item.quantity_value ?? null : null,
+          quantity_unit: item.item_type === 'product' ? item.quantity_unit || null : null,
           description: item.description || '',
           details_prompt: item.details_prompt || '',
           keywords: item.keywords || '',
@@ -329,9 +409,12 @@ export default function CatalogPage() {
 
     return activeItems.slice(0, 6).map((item, idx) => {
       const parts = [`${idx + 1}. ${item.name}`];
-      if (item.price_label) parts.push(`(${item.price_label})`);
-      if (item.duration_minutes && type === 'service') {
-        parts.push(`${item.duration_minutes} min`);
+      if (item.price_label) parts.push(`(${normalizePriceLabel(item.price_label)})`);
+      const durationText = formatDurationLabel(item);
+      if (type === 'service' && durationText) parts.push(durationText);
+      if (type === 'product') {
+        const quantityText = formatQuantityLabel(item);
+        if (quantityText) parts.push(`Pack: ${quantityText}`);
       }
       return parts.join(' ');
     });
@@ -510,12 +593,17 @@ export default function CatalogPage() {
                     <div className="flex flex-wrap gap-4 text-xs text-aa-gray mt-3">
                       {item.price_label && (
                         <span className="flex items-center gap-2">
-                          <FontAwesomeIcon icon={faTags} /> {item.price_label}
+                          <FontAwesomeIcon icon={faTags} /> {normalizePriceLabel(item.price_label)}
                         </span>
                       )}
-                      {item.item_type === 'service' && item.duration_minutes && (
+                      {item.item_type === 'service' && formatDurationLabel(item) && (
                         <span className="flex items-center gap-2">
-                          <FontAwesomeIcon icon={faClock} /> {item.duration_minutes} min
+                          <FontAwesomeIcon icon={faClock} /> {formatDurationLabel(item)}
+                        </span>
+                      )}
+                      {item.item_type === 'product' && formatQuantityLabel(item) && (
+                        <span className="flex items-center gap-2">
+                          Qty/Pack: {formatQuantityLabel(item)}
                         </span>
                       )}
                       {item.keywords && item.keywords.length > 0 && (
@@ -630,6 +718,8 @@ export default function CatalogPage() {
                           ...prev,
                           item_type: 'service',
                           details_prompt: DEFAULT_SERVICE_PROMPT,
+                          duration_value: prev.duration_value || '',
+                          duration_unit: prev.duration_unit || 'minutes',
                         }))
                       }
                       disabled={Boolean(editingItem) || !canAddServices}
@@ -648,6 +738,8 @@ export default function CatalogPage() {
                           ...prev,
                           item_type: 'product',
                           details_prompt: DEFAULT_PRODUCT_PROMPT,
+                          duration_value: '',
+                          duration_unit: 'minutes',
                         }))
                       }
                       disabled={Boolean(editingItem) || !canAddProducts}
@@ -683,23 +775,83 @@ export default function CatalogPage() {
                 <Input
                   label="Price Label"
                   value={form.price_label}
-                  onChange={(event) => setForm((prev) => ({ ...prev, price_label: event.target.value }))}
-                  placeholder="e.g., INR 999 / session"
+                  onChange={(event) => setForm((prev) => ({ ...prev, price_label: normalizePriceLabel(event.target.value) }))}
+                  placeholder="e.g., ₹ 999 / session"
                 />
                 {form.item_type === 'service' ? (
                   <Input
-                    label="Duration (minutes)"
+                    label="Duration Value"
                     type="number"
-                    value={form.duration_minutes}
-                    onChange={(event) => setForm((prev) => ({ ...prev, duration_minutes: event.target.value }))}
+                    value={form.duration_value}
+                    onChange={(event) => setForm((prev) => ({ ...prev, duration_value: event.target.value }))}
                     placeholder="e.g., 45"
                   />
                 ) : (
                   <div className="rounded-xl border border-dashed border-gray-200 bg-white p-4 text-sm text-aa-gray">
-                    Products do not need duration settings.
+                    Duration is not needed for products.
                   </div>
                 )}
               </div>
+
+              {form.item_type === 'service' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-aa-text-dark mb-2">Duration Unit</label>
+                    <select
+                      value={form.duration_unit}
+                      onChange={(event) => setForm((prev) => ({ ...prev, duration_unit: event.target.value }))}
+                      className="w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
+                    >
+                      {DURATION_UNIT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-white p-4 text-sm text-aa-gray">
+                    Set service duration to help scheduling and booking.
+                  </div>
+                </div>
+              )}
+
+              {form.item_type === 'product' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Input
+                    label="Pack / Qty Value"
+                    type="number"
+                    value={form.quantity_value}
+                    onChange={(event) => setForm((prev) => ({ ...prev, quantity_value: event.target.value }))}
+                    placeholder="e.g., 500"
+                  />
+                  <div>
+                    <label className="block text-sm font-semibold text-aa-text-dark mb-2">Pack / Qty Unit</label>
+                    <select
+                      value={form.quantity_unit}
+                      onChange={(event) => setForm((prev) => ({ ...prev, quantity_unit: event.target.value }))}
+                      className="w-full px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg outline-none focus:border-aa-orange"
+                    >
+                      {PRODUCT_QUANTITY_UNITS.map((unit) => (
+                        <option key={unit} value={unit}>
+                          {unit === 'custom' ? 'Custom' : unit}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {form.quantity_unit === 'custom' ? (
+                    <Input
+                      label="Custom Unit"
+                      value={form.quantity_unit_custom}
+                      onChange={(event) => setForm((prev) => ({ ...prev, quantity_unit_custom: event.target.value }))}
+                      placeholder="e.g., sheet, bottle, set"
+                    />
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-gray-200 bg-white p-4 text-sm text-aa-gray">
+                      Add pack details like g, kg, liter, meter, or custom.
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-semibold text-aa-text-dark mb-2">Description</label>
@@ -793,11 +945,21 @@ export default function CatalogPage() {
                     <span className="font-semibold text-aa-text-dark truncate">
                       {form.name || 'Item name'}
                     </span>
-                    <span className="text-aa-gray">{form.price_label || 'Price label'}</span>
+                    <span className="text-aa-gray">{normalizePriceLabel(form.price_label) || 'Price label'}</span>
                   </div>
                   <p className="text-xs text-aa-gray">Category: {form.category || '—'}</p>
-                  {form.item_type === 'service' && form.duration_minutes && (
-                    <p className="text-xs text-aa-gray">Duration: {form.duration_minutes} min</p>
+                  {form.item_type === 'service' && form.duration_value && (
+                    <p className="text-xs text-aa-gray">
+                      Duration: {form.duration_value} {form.duration_unit}
+                    </p>
+                  )}
+                  {form.item_type === 'product' && form.quantity_value && (
+                    <p className="text-xs text-aa-gray">
+                      Pack: {form.quantity_value}{' '}
+                      {form.quantity_unit === 'custom'
+                        ? form.quantity_unit_custom || 'unit'
+                        : form.quantity_unit}
+                    </p>
                   )}
                   <p className="text-xs text-aa-gray">
                     Status: {form.is_active ? 'Active' : 'Hidden'}

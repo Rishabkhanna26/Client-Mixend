@@ -7,7 +7,6 @@ import {
   faGauge,
   faInbox,
   faUsers,
-  faChartLine,
   faTowerBroadcast,
   faFileLines,
   faChartBar,
@@ -72,8 +71,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
   const menuItems = [
     { name: 'Dashboard', icon: faGauge, path: '/dashboard' },
     { name: 'Inbox', icon: faInbox, path: '/inbox', badge: inboxCount > 0 ? String(inboxCount) : null },
-    { name: 'Contacts', icon: faUsers, path: '/contacts' },
-    { name: 'Leads', icon: faChartLine, path: '/leads' },
+    { name: 'Leads', icon: faUsers, path: '/contacts' },
     { name: catalogLabel, icon: faBoxOpen, path: '/catalog' },
     ...(showOrders ? [{ name: 'Orders', icon: faCartShopping, path: '/orders' }] : []),
     ...(showAppointments ? [{ name: 'Appointments', icon: faCalendarCheck, path: '/appointments' }] : []),

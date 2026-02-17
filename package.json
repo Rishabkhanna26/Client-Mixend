@@ -7,7 +7,7 @@
     "setup-db": "node db/seed.js",
     "wp": "nodemon src/server.js",
     "backend:start": "node src/server.js",
-    "dev": "npm run setup-db && next dev",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
